@@ -6,7 +6,7 @@ Wording on the welcome page that isn't final yet. Each item is marked in `src/in
 
 ## Waiting on Legal
 
-Legal's wording comes from [lcw-front-end#194](https://github.com/digitalcredentials/lcw-front-end/issues/194).
+Where Legal's wording comes from is tracked in [#1](https://github.com/digitalcredentials/lcw-welcome/issues/1).
 
 | ID | Where | Says now |
 |---|---|---|
@@ -20,7 +20,7 @@ Legal's wording comes from [lcw-front-end#194](https://github.com/digitalcredent
 | `faq-private-notice` | FAQ, "Is my data private?" | See the privacy notice. (Not linked yet.) |
 | `footer-terms` | Footer | Terms of use (links nowhere yet) |
 | `footer-privacy` | Footer | Privacy (links nowhere yet) |
-| `feedback-screenshots` | Feedback form, under "Add screenshots" | Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends. |
+| `feedback-screenshots` | Feedback form, under "Screenshots", above the Add screenshots button | Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends. |
 | `feedback-privacy` | Feedback form, above "Send feedback" | We use what you send only to run and improve the alpha. See the privacy notice. |
 
 ## Waiting on the team

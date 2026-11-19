@@ -55,7 +55,7 @@ p{margin:0}
 .wrap{max-width:var(--wrap);margin-inline:auto;padding-inline:clamp(16px,4vw,40px)}
 
 /* the list of notices in Try it */
-.ph-block{border:1px solid var(--rule);background:var(--paper);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.ph-block{border:1px dashed var(--rule);background:var(--paper);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
 .ph-block ul{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:6px;color:var(--ink)}
 
 /* header */
@@ -1174,7 +1174,7 @@ var UPLOAD_FORM = {
   /* Full page: the same form at its own address, /feedback. The build puts a copy of this page there,
      so both places always match. The wallet's feedback button links to /feedback?from=wallet. */
   var inner=dlg.querySelector('.fb-in'), slot=document.getElementById('fbp-slot');
-  var onPage=/\/feedback(\/(index\.html)?)?$/.test(location.pathname);
+  var onPage=/^\/feedback(\/(index\.html)?)?$/.test(location.pathname);
   if(onPage){
     slot.appendChild(inner); document.body.classList.add('fbp-on');
     fbH.setAttribute('role','heading'); fbH.setAttribute('aria-level','1');
