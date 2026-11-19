@@ -1,0 +1,1233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Kept out of search engines until launch (see README, "Before launch"). -->
+<meta name="robots" content="noindex">
+<title>Learner Credential Wallet Alpha</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400..800;1,400&display=swap">
+<style>
+/* Layout: shares dccommons.org's colors and type, but not its page grammar, so the two sites
+   read as related but distinct. A wide hero (text beside a simplified wallet screen sitting on Maya's
+   space) with an indigo-outlined status box; the interactive comparison (an app's account vs Maya's own space) sits in How it works, then sections as alternating bands (white, wash), each with its
+   title above the content in one centered column. No side rail, no hairlines between sections.
+   A learning page first (what a Portable Web Space is), with one hands-on path (the test badge).
+   Light only, by choice, as on dccommons.org: the kit's full-color logo is specified for white grounds.
+   Tokens and type steps are copied from dc-commons-website assets/css/site.css. */
+:root{
+  color-scheme:light;
+  --paper:#FFFFFF;
+  --wash:#F4F6FA;
+  --rule:#DCE0EA;
+  --ink:#342E25;
+  --ink-2:#5E584D;
+  --indigo:#293F7D;
+  --indigo-deep:#182C5D;
+  --green:#3B7A44;
+  --issuer:#781E2D;
+  --issuer-2:#2A7778;
+  --focus:#293F7D;
+  --note-rule:#7F93C2;
+  --font:"Figtree",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --step--1:.875rem;
+  --step-0:1.0625rem;
+  --step-1:1.25rem;
+  --step-2:1.625rem;
+  --step-3:clamp(2.25rem,5.2vw,3.5rem);
+  --measure:40rem;
+  --wrap:68rem;
+  --header-h:72px;
+  --sec-space:clamp(40px,6vw,72px);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:var(--header-h)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:var(--step-0);line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--indigo);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--indigo-deep);text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:2px}
+h1,h2,h3{margin:0;color:var(--indigo-deep);text-wrap:balance;font-weight:650}
+p{margin:0}
+.wrap{max-width:var(--wrap);margin-inline:auto;padding-inline:clamp(16px,4vw,40px)}
+
+/* the list of notices in Try it */
+.ph-block{border:1px solid var(--rule);background:var(--paper);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.ph-block ul{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:6px;color:var(--ink)}
+
+/* header */
+.site-header{position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--rule)}
+.site-header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px 32px;min-height:var(--header-h)}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--indigo-deep);min-width:0}
+.brand img{width:36px;height:36px;border-radius:8px;flex:none}
+.brand-name{font-weight:700;font-size:1.0625rem;line-height:1.2;letter-spacing:-.005em}
+.brand-stage{display:block;font-size:.8125rem;font-weight:600;color:var(--ink-2);letter-spacing:.01em}
+.brand-line{display:block}
+/* the stage flag: a solid pill in the accent color, white text well past AA */
+.alpha-badge{display:inline-block;margin-left:4px;vertical-align:2px;font-size:.6875rem;font-weight:700;line-height:1;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px 3px;border-radius:999px;background:var(--indigo);color:#fff;white-space:nowrap}
+@media (max-width:360px){.brand-stage{font-size:.75rem;letter-spacing:0}}
+.site-nav{display:flex;align-items:center;gap:6px 26px;font-size:var(--step--1);font-weight:500}
+.site-nav a{color:var(--ink);text-decoration:none;display:inline-block;padding-block:12px}
+.site-nav a:hover{color:var(--indigo);text-decoration:underline}
+/* phones: a menu button (three lines, an X when open) shows the section links under the header */
+.menu-btn{display:none;width:44px;height:44px;margin-right:-10px;padding:0;place-items:center;color:var(--ink);background:none;border:0;border-radius:4px;cursor:pointer;flex:none}
+.menu-btn svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.menu-btn .i-close,.menu-btn[aria-expanded="true"] .i-open{display:none}
+.menu-btn[aria-expanded="true"] .i-close{display:inline}
+.menu-btn:hover{color:var(--indigo);background:var(--wash)}
+.mobile-menu{display:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (max-width:860px){
+  .site-nav a{display:none}
+  .menu-btn{display:inline-grid}
+  .site-header .wrap{column-gap:8px}
+  .mobile-menu{display:block;position:absolute;left:0;right:0;top:100%;background:var(--paper);border-bottom:1px solid var(--rule);box-shadow:0 18px 30px -24px rgba(24,44,93,.45)}
+  .mobile-menu[hidden]{display:none}
+  .mobile-menu ul{list-style:none;margin:0;padding:4px clamp(16px,4vw,40px) 8px}
+  .mobile-menu a{display:block;padding-block:14px;border-top:1px solid var(--rule);color:var(--ink);font-weight:500;text-decoration:none}
+  .mobile-menu li:first-child a{border-top:0}
+  .mobile-menu a:hover{color:var(--indigo)}
+}
+
+/* sections */
+main{display:flex;flex-direction:column}
+section{padding-block:var(--sec-space)}
+section.band{background:var(--wash)}
+h2{font-size:clamp(1.75rem,3vw,2.125rem);line-height:1.15;letter-spacing:-.015em}
+h3{font-size:var(--step-1);line-height:1.3}
+.lead{font-size:var(--step-1);line-height:1.5}
+.fine{font-size:var(--step--1);color:var(--ink-2)}
+.sec{display:flex;flex-direction:column;gap:22px}
+.sec-body{min-width:0;display:flex;flex-direction:column;gap:18px}
+.sec-body > p{max-width:none}
+.sec-body > p strong{font-weight:650;color:var(--indigo-deep)}
+
+/* hero */
+.hero{padding-block:clamp(44px,7vw,96px) var(--sec-space)}
+.hero-grid{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,3vw,36px) clamp(32px,5vw,64px);
+  align-items:center;grid-template-areas:"text fig" "status status";
+}
+
+.hero-text{grid-area:text;min-width:0;display:flex;flex-direction:column;gap:20px}
+.hero h1{font-size:var(--step-3);line-height:1.06;letter-spacing:-.025em;font-weight:700}
+.tagline{text-wrap:pretty;font-size:var(--step-1);font-weight:600;color:var(--indigo);margin-top:-4px}
+.hero .lead{font-size:var(--step-0);line-height:1.6}
+.hero .lead strong{font-weight:650;color:var(--indigo-deep)}
+.hero-fig{grid-area:fig;min-width:0}
+@media (max-width:900px){.hero-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"text" "fig" "status"}}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:1rem;font-weight:600;line-height:1.2;padding:13px 20px;border-radius:4px;border:1.5px solid var(--indigo);text-decoration:none;cursor:pointer}
+.btn-primary{background:var(--indigo);color:#FFFFFF}
+.btn-primary:hover{background:var(--indigo-deep);border-color:var(--indigo-deep);color:#FFFFFF;text-decoration:none}
+.btn-secondary{background:var(--paper);color:var(--indigo)}
+.btn-secondary:hover{background:var(--wash);color:var(--indigo-deep);text-decoration:none}
+
+/* status callout: outlined, like dccommons.org's "who we are" block */
+.status{grid-area:status;min-width:0;padding:16px 20px;border:1.5px solid var(--indigo);border-radius:10px;background:var(--paper)}
+.status p{max-width:62rem}
+.status b{color:var(--indigo-deep);font-weight:650}
+
+/* hero picture: the wallet itself (a simplified "My Credentials" screen), sitting on Maya's space */
+.hero-fig{margin:0}
+.ground{background:var(--wash);border-radius:14px;padding:16px 16px 0;display:flex;flex-direction:column}
+.ground-cap{font-size:.8125rem;color:var(--ink-2);padding:11px 4px 13px;text-align:center}
+.ground-cap b{color:var(--indigo-deep);font-weight:650;white-space:nowrap}
+.wa{border:1px solid #C9CFDB;border-radius:12px;overflow:hidden;background:var(--paper)}
+.wa-top{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--rule);background:#F8F9FB;font-size:.75rem;font-weight:650;color:var(--indigo-deep)}
+.wa-dots{display:flex;gap:4px;margin-right:6px}.wa-dots i{width:7px;height:7px;border-radius:50%;background:#C9CFDB}
+.wa-top img{width:18px;height:18px;border-radius:4px}
+.wa-body{padding:14px 14px 16px}
+.wa-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.wa-h b{font-size:.9375rem;font-weight:650;color:var(--ink)}
+.wa-add{font-size:.6875rem;font-weight:600;color:#fff;background:var(--indigo);border-radius:6px;padding:5px 9px;white-space:nowrap}
+.wa-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.wa-card{border:1px solid var(--rule);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.wa-card svg{width:34px;height:34px;color:var(--issuer)}
+.wa-card .wa-ring{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--issuer-2);border:2px solid currentColor;box-shadow:inset 0 0 0 2px var(--paper),inset 0 0 0 3px currentColor;font-size:9px;font-weight:800}
+.wa-card b{font-size:.75rem;font-weight:600;line-height:1.3;color:var(--ink)}
+.wa-card span{font-size:.6875rem;line-height:1.3;color:var(--ink-2)}
+.wa-card small{font-size:.625rem;color:var(--ink-2)}
+.wa-card .wa-open{align-self:flex-start;margin-top:3px;font-size:.625rem;font-weight:600;color:var(--ink);border:1px solid #C9CFDB;border-radius:5px;padding:2px 7px}
+@media (max-width:440px){.wa-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.wa-card:nth-child(3){display:none}}
+
+/* How it works: an intro, then two parts with the same shape (a heading, a lead, a full-width panel):
+   why a Portable Web Space (the interactive comparison), and the four ideas (the diagram and cards) */
+.sub{display:flex;flex-direction:column;gap:16px;margin-top:18px}
+.sub-head{display:flex;flex-direction:column;gap:8px}
+.sub-head h3{font-size:var(--step-1);font-weight:650}
+.sub-head p{max-width:none}
+.sub .ax-card{padding:22px 24px}
+.sub .ax-grid{gap:16px 48px}
+@media (max-width:440px){.sub .ax-card{padding:14px}.sub .ax-grid{gap:12px 20px}}
+
+/* what it is: the interactive comparison (an app's account vs Maya's own space) */
+.ax-card{background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.ax-grid{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 28px;align-items:stretch}
+.ax-grid::before{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:1px solid var(--rule)}
+/* phones: keep the two columns side by side, so both outcomes stay in view beside the button */
+@media (max-width:440px){
+  .ax-card{padding:14px}
+  .ax-grid{gap:12px 20px}
+  .ax-slot{min-height:150px}
+  .ax .ax-cr{grid-template-columns:minmax(0,1fr);padding:6px 7px}
+  .ax .ax-cr svg,.ax .ax-cr .ax-ring{display:none}
+  .ax .ax-cr i{grid-column:1}
+  .ax-appbar .ax-dots{display:none}
+}
+.ax-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ax-h{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.ax-slot{position:relative;min-height:190px;flex:1}
+.ax-app{border:1.5px solid #8E97AE;border-radius:10px;overflow:hidden;background:var(--paper)}
+.ax-appbar{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#EEF0F4;border-bottom:1px solid var(--rule);font-size:.75rem;font-weight:650;color:var(--ink-2)}
+.ax-dots{display:flex;gap:3px}.ax-dots i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.45}
+.ax-list{display:flex;flex-direction:column;gap:6px;padding:8px}
+.ax-cr{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 9px;align-items:center;padding:6px 8px;border:1px solid var(--rule);border-radius:6px;background:var(--paper)}
+.ax-cr svg{grid-row:1/span 2;width:26px;height:26px;color:var(--issuer)}
+.ax-ring{grid-row:1/span 2;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--issuer-2);border:2px solid currentColor;box-shadow:inset 0 0 0 2px var(--paper),inset 0 0 0 3px currentColor;font-size:7.5px;font-weight:800}
+.ax-cr b{font-size:.8125rem;font-weight:650;line-height:1.25;min-width:0}
+.ax-cr i{font-style:normal;font-size:.75rem;color:var(--ink-2);grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ax-wallet{border:1.5px solid var(--indigo);border-radius:10px;background:var(--indigo);color:#fff;font-size:.75rem;font-weight:650;padding:6px 10px}
+.ax-alt{display:none}
+.ax-open{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.ax-sub{font-size:.75rem;font-weight:600;color:var(--ink-2)}
+.ax-space{border:2px solid var(--indigo-deep);border-radius:12px;background:var(--wash);padding:8px;display:flex;flex-direction:column;gap:6px}
+.ax-space-h{font-size:.8125rem;font-weight:700;color:var(--indigo-deep);padding:0 2px}
+.ax-space .ax-list{padding:0}
+.ax-gone{position:absolute;inset:0;border:1.5px dashed #8E97AE;border-radius:10px;display:grid;place-items:center;text-align:center;padding:12px;font-size:.8125rem;color:var(--ink-2);opacity:0;pointer-events:none;background:#FAFAFB}
+.ax-app,.ax-open,.ax-gone{transition:opacity .45s ease,transform .45s ease}
+.ax-wallet{transition:background-color .45s ease,color .45s ease,border-color .45s ease}
+.ax.removed .ax-left .ax-app{opacity:0;transform:translateY(10px) scale(.97)}
+.ax.removed .ax-left .ax-gone{opacity:1}
+.ax.removed .ax-right .ax-open{opacity:0;transform:translateY(6px)}
+.ax.back .ax-right .ax-open{opacity:1;transform:none}
+.ax.back .ax-right .ax-wallet{background:#F6E7DD;color:#7A3A14;border-color:#C9875E}
+.ax.back .ax-main{display:none}
+.ax.back .ax-alt{display:inline}
+.ax-note{font-size:.8125rem;line-height:1.4;color:var(--ink-2);min-height:3em}
+.ax-note b{color:var(--indigo-deep)}
+.ax-note.bad b{color:#8A2626}
+.ax-note.good b{color:var(--green)}
+.ax-q{font-size:.9375rem;font-weight:650;color:var(--indigo-deep);line-height:1.35}
+.ax-goal{display:none;font-size:.875rem;color:var(--ink);background:var(--wash);border:1px dashed var(--note-rule);border-radius:6px;padding:8px 10px}
+.ax-goal.on{display:block}
+.ax-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ax-btn{font:inherit;font-size:.875rem;font-weight:600;padding:7px 14px;border-radius:4px;border:1.5px solid var(--indigo);background:var(--paper);color:var(--indigo);cursor:pointer}
+.ax-btn:hover{background:var(--wash);color:var(--indigo-deep)}
+.ax-btn[hidden],.ax-reset[hidden]{display:none}
+.ax-reset{font:inherit;font-size:.875rem;font-weight:600;color:var(--indigo);background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ax-step{font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+@media (prefers-reduced-motion:reduce){.ax-app,.ax-open,.ax-wallet,.ax-gone{transition:none}}
+/* Maya's side: the wallet is a tab on the space's edge. Step 2 lifts it off; step 3 snaps another one on */
+.ax-space.has-tab{position:relative;margin-top:14px;padding-top:21px}  /* room under the tab, so it never touches the heading */
+.ax-left .ax-app{margin-top:14px}
+.ax-left .ax-gone{top:14px}
+/* steady height: every step keeps the same size. The note box is always there (a hint in step 1, the caveat after),
+   both texts share one grid cell so the box is as tall as the longer one; both boxes fill their column; the button row keeps its height */
+.ax-slot{display:flex;flex-direction:column}
+.ax-left .ax-app{flex:1}
+.ax-space.has-tab{flex:1}
+.ax-msg{display:grid;align-items:center;font-size:.875rem;background:var(--wash);border:1px dashed var(--note-rule);border-radius:6px;padding:8px 10px}
+.ax-msg > p{grid-area:1/1}
+.ax-msg .ax-goal{display:block;visibility:hidden;background:none;border:0;padding:0;border-radius:0}
+.ax-msg .ax-goal.on{visibility:visible}
+.ax-hint{color:var(--ink-2)}
+.ax-goal.on + .ax-hint{visibility:hidden}
+.ax-controls{min-height:2.5rem}
+@media (max-width:520px){.ax-controls{min-height:4.25rem;align-content:flex-start}.ax-note{min-height:4.2em}}
+@media (max-width:340px){.ax-controls{min-height:5.2rem}}
+.ax-space.has-tab .ax-open{position:absolute;top:-13px;right:12px;margin:0;display:block}
+.ax-space.has-tab .ax-wallet{display:inline-block;border-radius:6px;padding:3px 10px;font-size:.6875rem;line-height:1.5;white-space:nowrap}
+.ax-short{display:none}
+.ax.removed .ax-right .ax-space.has-tab .ax-open{opacity:0;transform:translateY(-8px)}
+.ax.back .ax-right .ax-space.has-tab .ax-open{opacity:1;transform:none}
+@media (max-width:520px){.ax-long{display:none}.ax-short{display:inline}.ax-space.has-tab .ax-open{right:8px}}
+
+
+/* what it is */
+/* what it is: one diagram across the width, then four short cards numbered to match */
+.cn{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--indigo-deep);color:#fff;font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums}
+.flow{margin:0;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:18px}
+.flow-row{display:grid;grid-template-columns:minmax(0,1fr) 112px minmax(0,1.35fr) 112px minmax(0,1fr);align-items:center}
+.f-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.f-h{display:flex;align-items:center;gap:8px;font-size:.8125rem;font-weight:700;color:var(--indigo-deep);min-height:24px}
+.f-box{display:flex;align-items:center;gap:9px;border:1px solid var(--rule);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:.8125rem;font-weight:600;color:var(--ink);min-width:0}
+.f-box svg{width:26px;height:26px;flex:none;color:var(--issuer)}
+.f-box small{display:block;font-weight:500;color:var(--ink-2);font-size:.75rem}
+.f-ring{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--issuer-2);border:2px solid currentColor;box-shadow:inset 0 0 0 2px var(--paper),inset 0 0 0 3px currentColor;font-size:7.5px;font-weight:800}
+.f-ring.sm{width:20px;height:20px;font-size:6.5px}
+.f-arrows{display:flex;flex-direction:column;gap:30px;padding:0 10px}
+.f-arrow{position:relative;height:0;border-top:2px solid var(--ink-2);margin-top:18px}
+.f-arrow::after{content:"";position:absolute;right:-2px;top:-7px;border-left:9px solid var(--ink-2);border-top:6px solid transparent;border-bottom:6px solid transparent}
+.f-arrow span{position:absolute;bottom:6px;left:-6px;right:-6px;text-align:center;font-size:.75rem;line-height:1.25;color:var(--ink-2)}
+.f-arrow.planned{border-top-style:dashed;border-top-color:#9AA1AE}
+.f-arrow.planned::after{border-left-color:#9AA1AE}
+.f-wallets{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px}
+.f-wallet{border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;border-radius:8px;padding:6px 9px;font-size:.75rem;font-weight:650}
+.f-wallet.planned{background:var(--paper);color:var(--ink-2);border-style:dashed;border-color:#9AA1AE;font-weight:600}
+.f-wallet.other{background:var(--paper);color:var(--indigo)}
+/* the wallet's own mark: just the logo's dots, in white, so no tile is needed on the indigo chip.
+   Both chips center their content, like "Choose where it's kept" below, so a wrapped name sits balanced. */
+.f-wallet{display:flex;align-items:center;justify-content:center;text-align:center}
+.f-wallet.has-mark{gap:6px;padding-inline:8px}
+.f-wallet .f-mark{flex:none;width:20px;height:20px}
+@media (min-width:360px){.f-wallets:has(.has-mark){grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}}
+@media (max-width:359px){.f-wallet .f-mark{display:none}}
+.f-space{border:2px solid var(--indigo-deep);border-radius:12px;background:var(--wash);padding:9px;display:flex;flex-direction:column;gap:6px}
+.f-sub{font-size:.75rem;font-weight:600;color:var(--ink-2);margin-bottom:-4px}
+.f-space-h{font-size:.8125rem;font-weight:700;color:var(--indigo-deep)}
+.f-cr{display:flex;align-items:center;gap:7px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);padding:5px 7px;font-size:.75rem;font-weight:600;color:var(--ink);min-width:0}
+.f-cr svg{width:20px;height:20px;flex:none;color:var(--issuer)}
+.f-cr.out{border-color:var(--indigo)}
+.f-cr.planned{border-style:dashed;border-color:#9AA1AE;color:var(--ink-2);font-weight:500}
+.f-ok{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-weight:800;font-size:.625rem;margin-left:auto;flex:none}
+.f-host{border:1.5px dashed #9AA1AE;border-radius:8px;padding:5px 9px;font-size:.75rem;color:var(--ink-2);font-weight:600;text-align:center}
+.pl{font-weight:500;color:var(--ink-2)}
+.f-recv{border:1px solid var(--rule);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:7px;background:var(--paper)}
+.f-recv b{font-size:.8125rem;color:var(--ink)}
+.f-band{display:flex;align-items:center;gap:10px;border-top:1px solid var(--rule);padding-top:14px;font-size:.875rem;color:var(--ink)}
+.f-band b{color:var(--indigo-deep)}
+/* the diagram plays once, in reading order, when it is fully in view (script below). Without the
+   script, or with reduced motion, nothing is armed and the final state shows. Planned items fade in
+   with their column but never move; only works-today things travel. */
+.f-token{display:none}
+.flow.is-armed [data-seq]{opacity:.22;transition:opacity .5s ease}
+.flow.is-armed [data-seq].on{opacity:1}
+.flow.is-armed .f-token{display:block;position:absolute;top:-6px;left:0;width:20px;height:10px;border-radius:3px;border:1.5px solid var(--issuer);background:var(--paper);opacity:0}
+.flow.is-armed .f-arrow.go .f-token{animation:f-travel .9s ease-in-out forwards}
+@keyframes f-travel{0%{left:0;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:calc(100% - 22px);opacity:0}}
+.flow.is-armed .f-space .f-cr.out{transition:box-shadow .4s ease}
+.flow.is-armed .f-space .f-cr.out.land{box-shadow:0 0 0 3px rgba(41,63,125,.22)}
+.flow.is-armed .f-ok{transform:scale(.4);opacity:0;transition:transform .35s cubic-bezier(.3,1.6,.5,1),opacity .2s ease}
+.flow.is-armed .f-ok.on{transform:none;opacity:1}
+@media print{.flow.is-armed [data-seq],.flow.is-armed .f-ok{opacity:1;transform:none}}
+@media (max-width:860px){
+  .flow-row{grid-template-columns:minmax(0,1fr);gap:6px}
+  .f-arrows{padding:4px 0 4px 18px;gap:6px}
+  .f-arrow{border-top:0;height:auto;margin:0;padding-left:16px}
+  .f-arrow::before{content:"\2193";position:absolute;left:0;top:0;color:var(--ink-2)}
+  .f-arrow.planned::before{color:#9AA1AE}
+  .f-arrow::after{display:none}
+  .flow.is-armed .f-token{display:none}
+  .f-arrow span{position:static;text-align:left;font-size:.75rem}
+}
+.ideas{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.ideas > li{display:flex;flex-direction:column;gap:10px;padding:22px;background:var(--paper);border:1px solid var(--rule);border-radius:10px;min-width:0}
+.ideas h3{display:flex;align-items:center;gap:9px;font-size:1.125rem;font-weight:650;margin:0}
+.idea-line{color:var(--ink)}
+.idea-status{margin:4px 0 0;padding-top:12px;border-top:1px solid var(--rule);display:grid;grid-template-columns:6.4rem minmax(0,1fr);gap:8px 12px;font-size:.9375rem}
+.idea-status dt{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding-top:2px}
+.idea-status dt.today{color:var(--green)}
+.idea-status dt.planned{color:var(--ink-2)}
+.idea-status dd{margin:0}
+.idea-status dd.today{color:var(--ink)}
+.idea-status dd.planned{color:var(--ink-2)}
+@media (max-width:700px){.ideas{grid-template-columns:minmax(0,1fr)}.idea-status{grid-template-columns:minmax(0,1fr);gap:2px}.idea-status dd{margin-bottom:8px}}
+
+/* try it: a real sequence, drawn as a connected stepper */
+/* early-access sign-up (mock-up) */
+.ab-kind{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.ab-title{font-weight:700;color:var(--indigo-deep)}
+.ab-issuer{font-size:.875rem;color:var(--ink-2)}
+.ab-ok{display:inline-flex;align-items:center;gap:6px;margin-top:4px;font-size:.8125rem;font-weight:650;color:var(--green)}
+.ab-ok span{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-size:.625rem;font-weight:800}
+/* the early-access card: one card in two halves, the pitch and the test badge on the left, the fields on the right; stacked on phones */
+.access-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 40px;align-items:start}
+.access-left,.access-right{display:flex;flex-direction:column;gap:10px;min-width:0}
+.access-right .access-label:first-of-type{margin-top:0}
+.access-mini{display:flex;align-items:center;gap:14px;margin-top:8px;padding:14px;border:1px solid var(--rule);border-radius:10px;background:var(--wash)}
+.access-mini img{width:56px;height:56px;border-radius:8px;background:#fff;border:1px solid var(--rule);flex:none}
+.access-mini > span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.access-mini .ab-ok{margin-top:2px}
+@media (max-width:860px){.access-form{grid-template-columns:minmax(0,1fr)}}
+.access{border:1.5px solid var(--indigo);border-radius:10px;background:var(--paper);padding:22px 24px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:calc(var(--header-h) + 16px)}
+.access-done{display:flex;flex-direction:column;gap:10px}
+.access-form{margin:0}
+.access-form[hidden],.access-done[hidden],.access-err[hidden]{display:none}
+.access-h{margin:0;color:var(--indigo-deep)}
+.access-h:focus{outline:none}
+.access p{margin:0}
+.access-label{font-weight:650;font-size:.9375rem;margin-top:4px}
+.access-row{display:flex;gap:10px;flex-wrap:wrap}
+.access-row input{flex:1 1 15rem;min-width:0;font:inherit;font-size:1rem;padding:12px 14px;border:1.5px solid #8E97AE;border-radius:4px;background:var(--paper);color:var(--ink)}
+.access-row input:focus{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo)}
+.access-row input[aria-invalid="true"]{border-color:#8A2626}
+.access-row .btn{flex:none}
+.access-err{color:#8A2626;font-size:.9375rem;font-weight:600}
+.linkish{font:inherit;color:var(--indigo);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.access-note{font-size:var(--step--1)}
+.steps-h{margin:6px 0 0;font-size:var(--step-0);font-weight:700;color:var(--indigo-deep)}
+@media (max-width:520px){.access{padding:18px 16px}.access-row .btn{flex:1 1 100%}}
+ol.steps{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 28px;counter-reset:step}
+ol.steps li{counter-increment:step;position:relative;display:flex;flex-direction:column;gap:6px;min-width:0}
+ol.steps li::before{
+  content:counter(step);display:grid;place-items:center;width:38px;height:38px;border-radius:50%;
+  border:2px solid var(--indigo);background:var(--paper);color:var(--indigo);font-weight:700;font-size:1rem;
+  font-variant-numeric:tabular-nums;position:relative;z-index:1;margin-bottom:8px;
+}
+ol.steps li:not(:last-child)::after{content:"";position:absolute;top:19px;left:46px;right:-20px;border-top:2px solid var(--rule)}
+ol.steps li:last-child::after{content:"";position:absolute;top:19px;left:46px;right:0;height:2px;background:linear-gradient(90deg,var(--rule),transparent)}
+ol.steps strong{color:var(--indigo-deep);font-weight:650}
+ol.steps span{color:var(--ink-2)}
+@media (max-width:960px){
+  ol.steps{grid-template-columns:minmax(0,1fr);gap:18px}
+  ol.steps li{display:grid;grid-template-columns:38px minmax(0,1fr);gap:2px 14px}
+  ol.steps li::before{grid-row:1 / span 2;margin-bottom:0}
+  ol.steps li:not(:last-child)::after{top:44px;bottom:-18px;left:18px;right:auto;border-top:0;border-left:2px solid var(--rule)}
+  ol.steps li:last-child::after{display:none}
+}
+
+/* lists of links, in the style of dccommons.org's tool list */
+.tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 32px;margin-top:4px}
+@media (max-width:700px){.tools{grid-template-columns:minmax(0,1fr)}}
+.tool{display:flex;flex-direction:column;gap:4px;padding-top:14px;border-top:2px solid var(--indigo);min-width:0}
+.tool-name{font-size:inherit;line-height:1.4;font-weight:650;color:var(--indigo-deep)}
+.tool p{color:var(--ink-2);max-width:var(--measure)}
+.tool-links{font-size:var(--step--1);display:flex;flex-wrap:wrap;gap:0 18px;font-weight:500}
+.tool-links a{display:inline-block;padding-block:10px}
+/* the architecture spans the grid; its three parts (the specs) sit inside it, indented a level, in three columns */
+.tool-wide{grid-column:1/-1}
+.parts{list-style:none;margin:4px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 32px}
+.parts li{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--rule);min-width:0}
+.part-name{margin:0;font-size:inherit;line-height:1.4;font-weight:650;color:var(--indigo-deep)}
+@media (max-width:900px){.parts{grid-template-columns:minmax(0,1fr)}}
+
+/* FAQ: one question per row; each opens in place (native details/summary, so it works without the script) */
+.faq{border-top:1px solid var(--rule)}
+.qa{border-bottom:1px solid var(--rule);scroll-margin-top:calc(var(--header-h) + 16px)}
+.qa summary{list-style:none;cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 4px;font-weight:600;color:var(--indigo-deep)}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary::after{content:"";flex:none;width:7px;height:7px;margin:.45em 6px 0 0;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s}
+.qa[open] summary::after{transform:rotate(-135deg);margin-top:.65em}
+.qa summary:hover .qa-q{text-decoration:underline}
+.qa-a{padding:0 44px 18px 4px;display:flex;flex-direction:column;gap:10px;color:var(--ink-2)}
+@media (max-width:520px){.qa-a{padding-right:4px}}
+@media (prefers-reduced-motion:reduce){.qa summary::after{transition:none}}
+
+/* feedback form: one dialog, opened from Try it and Get involved. Sends to a Google Form, as dccommons.org does. */
+.tool-links .linkish{display:inline-block;padding-block:10px;font-weight:inherit}
+.fb{width:min(36rem,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;border:0;border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:0 24px 60px -20px rgba(24,44,93,.5)}
+.fb::backdrop{background:rgba(24,44,93,.45)}
+.fb-in{padding:24px;display:flex;flex-direction:column;gap:14px}
+.fb-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.fb-h{font-size:var(--step-1);margin:0}
+.fb-x{flex:none;width:40px;height:40px;margin:-8px -8px 0 0;display:grid;place-items:center;border:0;border-radius:4px;background:none;color:var(--ink-2);cursor:pointer}
+.fb-x:hover{background:var(--wash);color:var(--indigo-deep)}
+/* full-page feedback: the same form, moved out of the dialog onto its own page (the wallet links here) */
+.fbp,.fbp-only{display:none}
+body.fbp-on main > *:not(.fbp),body.fbp-on .site-nav,body.fbp-on .mobile-menu{display:none!important}
+body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
+body.fbp-on .fbp-only{display:block}
+.fbp-card.fb{width:auto;max-width:38rem;max-height:none;margin:0 auto;border:1px solid var(--rule);box-shadow:none}  /* .fb carries the form styles; these undo the dialog sizing */
+.fbp-card .fb-x,.fbp-card #fb-cancel,.fbp-card #fb-close{display:none}
+.fbp-card .fb-h{font-size:var(--step-2)}
+@media (max-width:520px){body.fbp-on .fbp{padding-block:16px 40px}}
+.fb-x svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.fb form,.fb-done{display:flex;flex-direction:column;gap:14px;margin:0}
+.fb form[hidden],.fb-done[hidden],.fb-err[hidden],.fb-other[hidden]{display:none}
+.fb fieldset{border:0;margin:0;padding:0;min-width:0}
+.fb legend,.fb-label{font-weight:650;font-size:.9375rem;color:var(--ink);padding:0;margin-bottom:6px}
+.fb-hint{display:block;font-weight:400;color:var(--ink-2);font-size:.875rem}
+.fb-choices{display:flex;flex-direction:column;gap:2px}
+.fb-choice{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:.9375rem;cursor:pointer}
+.fb-choice input{width:18px;height:18px;margin:0;accent-color:var(--indigo);flex:none}
+.fb-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fb input[type=text],.fb input[type=email],.fb input[type=url],.fb textarea{font:inherit;font-size:1rem;width:100%;min-width:0;padding:10px 12px;border:1.5px solid #8E97AE;border-radius:4px;background:var(--paper);color:var(--ink)}
+.fb textarea{min-height:6rem;resize:vertical;line-height:1.5}
+.fb input:focus,.fb textarea:focus{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo)}
+.fb [aria-invalid="true"]{border-color:#8A2626}
+.fb-other{margin:4px 0 0 28px;width:calc(100% - 28px)!important}
+.fb-err{color:#8A2626;font-size:.875rem;font-weight:600;margin:2px 0 0}
+.fb-auto b{color:var(--ink);font-weight:600}
+.fb-priv{margin-top:6px}
+.fb .fb-up{align-self:flex-start;margin-top:4px}
+.fb-opened{margin:4px 0 0}
+.fb-opened[hidden]{display:none}
+.fb-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fb-status{font-size:.9375rem;margin:0}
+.fb-status.err,.fb-status-err{color:#8A2626;font-weight:600}
+.fb-h:focus{outline:none}
+@media (max-width:520px){.fb-in{padding:20px 16px}.fb-actions .btn{flex:1 1 100%}}
+
+/* footer */
+.site-footer{border-top:1px solid var(--rule);background:var(--paper)}
+.site-footer .wrap{padding-block:28px;display:flex;flex-wrap:wrap;gap:16px 28px;justify-content:space-between;align-items:center;font-size:var(--step--1);color:var(--ink-2)}
+.site-footer img{width:220px;height:auto;display:block}
+.site-footer nav{display:flex;flex-wrap:wrap;gap:0 22px;font-weight:500}
+.site-footer nav a{display:inline-block;padding-block:10px}
+.foot-text{display:flex;flex-direction:column;gap:12px;min-width:0}
+#deeper .tool.arch > p{max-width:none}  /* the architecture spans both columns, so its intro runs the full width like other section intros */
+#deeper .arch .parts{margin-top:10px;gap:18px 32px;padding-left:24px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:900px){#deeper .arch .parts{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:520px){#deeper .arch .parts{padding-left:16px}}
+#deeper .tool.tool-wide > p{max-width:none}
+#deeper .repo-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 32px;margin-top:10px;padding-left:24px}
+#deeper .repo-groups > div{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--rule);min-width:0}
+#deeper .repos{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+#deeper .repos li{display:flex;flex-direction:column;min-width:0}
+#deeper .repos .rd{color:var(--ink-2)}
+#deeper .repos a{align-self:flex-start;font-size:var(--step--1);font-weight:500;overflow-wrap:anywhere;padding-block:2px 4px}
+#deeper .repos .rn{white-space:nowrap}
+@media (max-width:900px){#deeper .repo-groups{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:520px){#deeper .repo-groups{padding-left:16px}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Riverbend Community College's seal, copied from dccommons.org (index.html) so both sites show the same issuer -->
+  <symbol id="seal-riverbend" viewBox="0 0 120 120">
+    <defs>
+      <path id="sealTop" d="M60,106 a46,46 0 1,1 0,-92 a46,46 0 1,1 0,92"/>
+      <path id="sealBottom" d="M7,60 a53,53 0 0,0 106,0"/>
+    </defs>
+    <circle cx="60" cy="60" r="58" stroke-width="2.4" fill="none" stroke="currentColor"/>
+    <circle cx="60" cy="60" r="55" stroke-width=".8" fill="none" stroke="currentColor"/>
+    <circle cx="60" cy="60" r="39.5" stroke-width="1.2" fill="none" stroke="currentColor"/>
+    <text font-size="8.6" font-weight="700" letter-spacing=".06em" fill="currentColor"><textPath href="#sealTop" startOffset="54.5" textLength="180" lengthAdjust="spacing">RIVERBEND COMMUNITY COLLEGE</textPath></text>
+    <text font-size="8.6" font-weight="700" letter-spacing=".06em" fill="currentColor"><textPath href="#sealBottom" startOffset="50%" text-anchor="middle">EST. 1968</textPath></text>
+    <circle cx="25" cy="95" r="1.6" fill="currentColor"/>
+    <circle cx="95" cy="95" r="1.6" fill="currentColor"/>
+    <path d="M40 52 Q50 46 60 51 Q70 46 80 52 L80 67 Q70 61 60 66 Q50 61 40 67 Z" fill="currentColor"/>
+    <path d="M60 51 V66" stroke-width="1.6" fill="none" stroke="#FFFFFF"/>
+    <path d="M38 75 q5.5 -4.5 11 0 t11 0 t11 0 t11 0" stroke-width="2.2" stroke-linecap="round" fill="none" stroke="currentColor"/>
+    <path d="M42 82 q4.5 -3.6 9 0 t9 0 t9 0 t9 0" stroke-width="1.8" stroke-linecap="round" fill="none" stroke="currentColor"/>
+  </symbol>
+</svg>
+
+<!-- the logo's target: the very top of the page. It must not sit inside the sticky header, or
+     each click scrolls only to the header's stuck position and the page creeps up a step at a time. -->
+<span id="top"></span>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <img src="/img/favicon.svg" alt="">
+      <span class="brand-name"><span class="brand-line">Learner Credential Wallet <span class="alpha-badge">Alpha</span></span><span class="brand-stage">From Digital Credentials Commons</span></span>
+    </a>
+    <nav class="site-nav" aria-label="On this page">
+      <a href="#idea">How it works</a>
+      <a href="#try">Try it</a>
+      <a href="#faq">FAQ</a>
+      <a href="#involved">Get involved</a>
+      <a href="#deeper">Go deeper</a>
+      <button type="button" class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="mobile-menu" aria-label="Open menu"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path class="i-open" d="M4 7h16M4 12h16M4 17h16"/><path class="i-close" d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </nav>
+  </div>
+  <nav class="mobile-menu" id="mobile-menu" aria-label="On this page" hidden>
+    <ul>
+      <li><a href="#idea">How it works</a></li>
+      <li><a href="#try">Try it</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#involved">Get involved</a></li>
+      <li><a href="#deeper">Go deeper</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <section class="fbp" id="feedback-page" aria-label="Share feedback">
+    <div class="wrap"><div class="fbp-card fb" id="fbp-slot"></div></div>
+  </section>
+  <section class="hero" aria-labelledby="hero-h">
+    <div class="wrap hero-grid">
+      <div class="hero-text">
+        <h1 id="hero-h">Your credentials, in a space you own</h1>
+        <p class="tagline">Built so your credentials stay yours, even if an app shuts down.</p>
+        <p class="lead">Learner Credential Wallet keeps your digital diplomas, certificates, and badges in a personal Portable Web Space: <strong>storage that belongs to you, not to the app</strong>.</p>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#idea">How it works</a>
+          <a class="btn btn-primary" href="#get-access" data-focus="access-name">Request early access</a>
+        </div>
+      </div>
+
+
+      <figure class="hero-fig" role="img" aria-label="Maya's wallet open on her credentials: a Certificate in Data Analysis and Spreadsheet Modeling from Riverbend Community College, and CPR and First Aid from Lakeview Safety Institute, all stored in her Portable Web Space, which belongs to her. The wallet opens it. Maya is an example.">
+        <div class="ground" aria-hidden="true">
+          <div class="wa">
+            <div class="wa-top"><span class="wa-dots"><i></i><i></i><i></i></span><img src="/img/favicon.svg" alt="">Learner Credential Wallet</div>
+            <div class="wa-body">
+              <div class="wa-h"><b>My Credentials</b><span class="wa-add">Add Credential</span></div>
+              <div class="wa-grid">
+                <div class="wa-card"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg><b>Certificate in Data Analysis</b><span>Riverbend Community College</span><small>Issued 5/16/2026</small><span class="wa-open">Open</span></div>
+                <div class="wa-card"><span class="wa-ring" aria-hidden="true">LSI</span><b>CPR and First Aid</b><span>Lakeview Safety Institute</span><small>Issued 3/2/2026</small><span class="wa-open">Open</span></div>
+                <div class="wa-card"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg><b>Spreadsheet Modeling</b><span>Riverbend Community College</span><small>Issued 12/9/2025</small><span class="wa-open">Open</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="ground-cap">For example, Maya's credentials are stored in her <b>Portable Web Space</b>, which belongs to her. The wallet opens it.</p>
+        </div>
+      </figure>
+
+      <div class="status" role="note">
+        <p><b>Alpha: an early test version.</b> <span data-ph="alpha-status">Try the wallet with our test badge, not your real credentials. Things may go wrong while it runs, and when the alpha ends, every account and everything in it is deleted.</span> <span data-ph="alpha-end-date">End date to come.</span> The wallet works best on a computer for now. <span data-ph="real-credentials-date">A version for your real credentials is planned for early 2027.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="idea" class="band" aria-labelledby="idea-h">
+    <div class="wrap sec">
+      <div class="sec-head"><h2 id="idea-h">How it works</h2></div>
+      <div class="sec-body">
+        <p>Most wallet apps keep your credentials in an account the app controls, so if the app shuts down, you can lose access to your credentials. Learner Credential Wallet keeps your credentials in a <strong>Portable Web Space</strong> instead: storage that belongs to you, not to the app. Your <strong>wallet</strong> opens that space. Think of email: a provider stores your mail, but the mail belongs to you. You can read your mail in any mail app, or move your mailbox to another provider. For the alpha, we keep your space on our servers, and you can also open it with another wallet built for Portable Web Spaces. Choosing where your space is kept comes next.</p>
+        <div class="sub">
+          <div class="sub-head">
+            <h3 id="ax-q">What happens to Maya's credentials if the app shuts down?</h3>
+          </div>
+        <div class="ax-card" role="group" aria-labelledby="ax-q">
+          <div class="ax" id="ax">
+            <div class="ax-grid">
+              <div class="ax-col ax-left">
+                <span class="ax-h">In an app's account</span>
+                <div class="ax-slot">
+                  <div class="ax-app">
+                    <div class="ax-appbar"><span class="ax-dots"><i></i><i></i><i></i></span>A wallet app</div>
+                    <div class="ax-list">
+                      <div class="ax-cr"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg><b>Data Analysis</b><i>Riverbend</i></div>
+                      <div class="ax-cr"><span class="ax-ring" aria-hidden="true">LSI</span><b>CPR and First Aid</b><i>Lakeview</i></div>
+                    </div>
+                  </div>
+                  <div class="ax-gone">Her credentials were in the app's account.</div>
+                </div>
+                <p class="ax-note" id="ax-note-l"></p>
+              </div>
+              <div class="ax-col ax-right">
+                <span class="ax-h">In Maya's own space</span>
+                <div class="ax-slot">
+                  <div class="ax-space has-tab">
+                    <div class="ax-open"><span class="ax-wallet"><span class="ax-main"><span class="ax-long">Opened with a wallet app</span><span class="ax-short">A wallet app</span></span><span class="ax-alt"><span class="ax-long">Opened with another wallet</span><span class="ax-short">Another wallet</span></span></span></div>
+                    <span class="ax-space-h">Maya's Portable Web Space</span>
+                    <div class="ax-list">
+                      <div class="ax-cr"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg><b>Data Analysis</b><i>Riverbend</i></div>
+                      <div class="ax-cr"><span class="ax-ring" aria-hidden="true">LSI</span><b>CPR and First Aid</b><i>Lakeview</i></div>
+                    </div>
+                  </div>
+                </div>
+                <p class="ax-note" id="ax-note-r"></p>
+              </div>
+            </div>
+          </div>
+          <div class="ax-msg"><p class="ax-goal" id="ax-goal">One caveat for the alpha: we keep all spaces on our servers, and we delete them when the alpha ends.</p><p class="ax-hint">Press the button to see what happens on each side.</p></div>
+          <div class="ax-controls">
+            <button type="button" class="ax-btn" id="ax-btn">The app shuts down</button>
+            <button type="button" class="ax-reset" id="ax-reset" hidden>Start over</button>
+            <span class="ax-step" id="ax-step">Step 1 of 3</span>
+            <p class="sr-only" id="ax-live" aria-live="polite"></p>
+          </div>
+        </div>
+        </div>
+        <div class="sub">
+          <div class="sub-head"><h3 id="ideas-h">Four ideas guide the work</h3></div>
+        <figure class="flow" role="img" aria-label="How the four ideas fit together: issuers send credentials into Maya's space, her wallet opens it, and she shares one certificate with a hiring manager">
+          <div class="flow-row" aria-hidden="true">
+            <div class="f-col" data-seq="1">
+              <span class="f-h"><span class="cn" data-n="1">1</span>Schools and employers can send to your space</span>
+              <div class="f-box"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg><span>Riverbend Community College<small>issues a certificate</small></span></div>
+              <div class="f-box"><span class="f-ring" aria-hidden="true">LSI</span><span>Lakeview Safety Institute<small>issues a badge</small></span></div>
+            </div>
+            <div class="f-arrows" data-seq="2"><div class="f-arrow"><span>website, file, or QR code</span><i class="f-token" aria-hidden="true"></i></div></div>
+            <div class="f-col" data-seq="3">
+              <span class="f-h"><span class="cn" data-n="2">2</span>Your space, not the app's</span>
+              <div class="f-space">
+                <span class="f-space-h">Maya's Portable Web Space</span>
+                <div class="f-cr out"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg>Certificate in Data Analysis</div>
+                <div class="f-cr"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg>Spreadsheet Modeling</div>
+                <div class="f-cr"><span class="f-ring sm" aria-hidden="true">LSI</span>CPR and First Aid</div>
+              </div>
+              <span class="f-sub">Opened with</span>
+              <div class="f-wallets"><div class="f-wallet has-mark"><svg class="f-mark" viewBox="2.28 0 312.84 317.4" width="22" height="22" aria-hidden="true" focusable="false"><g fill="currentColor"><circle cx="195.31" cy="137.56" r="2.45"/><circle cx="200.33" cy="151.36" r="2.45"/><circle cx="200.33" cy="166.04" r="2.45"/><circle cx="195.31" cy="179.84" r="2.45"/><circle cx="185.87" cy="191.08" r="2.45"/><circle cx="173.16" cy="198.43" r="2.45"/><circle cx="158.7" cy="200.98" r="2.45"/><circle cx="144.24" cy="198.43" r="2.45"/><circle cx="131.53" cy="191.08" r="2.45"/><circle cx="122.09" cy="179.84" r="2.45"/><circle cx="117.07" cy="166.04" r="2.45"/><circle cx="117.07" cy="151.36" r="2.45"/><circle cx="122.09" cy="137.56" r="2.45"/><circle cx="131.53" cy="126.32" r="2.45"/><circle cx="144.24" cy="118.97" r="2.45"/><circle cx="158.7" cy="116.42" r="2.45"/><circle cx="173.16" cy="118.97" r="2.45"/><circle cx="185.87" cy="126.32" r="2.45"/><circle cx="198.7" cy="125.14" r="3.03"/><circle cx="207.76" cy="140.84" r="3.03"/><circle cx="210.91" cy="158.7" r="3.03"/><circle cx="207.76" cy="176.56" r="3.03"/><circle cx="198.7" cy="192.26" r="3.03"/><circle cx="184.81" cy="203.92" r="3.03"/><circle cx="167.77" cy="210.12" r="3.03"/><circle cx="149.63" cy="210.12" r="3.03"/><circle cx="132.59" cy="203.92" r="3.03"/><circle cx="118.7" cy="192.26" r="3.03"/><circle cx="109.64" cy="176.56" r="3.03"/><circle cx="106.49" cy="158.7" r="3.03"/><circle cx="109.64" cy="140.84" r="3.03"/><circle cx="118.7" cy="125.14" r="3.03"/><circle cx="132.59" cy="113.48" r="3.03"/><circle cx="149.63" cy="107.28" r="3.03"/><circle cx="167.77" cy="107.28" r="3.03"/><circle cx="184.81" cy="113.48" r="3.03"/><circle cx="200.15" cy="109.31" r="3.74"/><circle cx="214.54" cy="126.46" r="3.74"/><circle cx="222.2" cy="147.5" r="3.74"/><circle cx="222.2" cy="169.9" r="3.74"/><circle cx="214.54" cy="190.94" r="3.74"/><circle cx="200.15" cy="208.09" r="3.74"/><circle cx="180.75" cy="219.29" r="3.74"/><circle cx="158.7" cy="223.18" r="3.74"/><circle cx="136.65" cy="219.29" r="3.74"/><circle cx="117.25" cy="208.09" r="3.74"/><circle cx="102.86" cy="190.94" r="3.74"/><circle cx="95.2" cy="169.9" r="3.74"/><circle cx="95.2" cy="147.5" r="3.74"/><circle cx="102.86" cy="126.46" r="3.74"/><circle cx="117.25" cy="109.31" r="3.74"/><circle cx="136.65" cy="98.11" r="3.74"/><circle cx="158.7" cy="94.22" r="3.74"/><circle cx="180.75" cy="98.11" r="3.74"/><circle cx="198.52" cy="89.74" r="4.62"/><circle cx="219.7" cy="107.51" r="4.62"/><circle cx="233.53" cy="131.46" r="4.62"/><circle cx="238.33" cy="158.7" r="4.62"/><circle cx="233.53" cy="185.94" r="4.62"/><circle cx="219.7" cy="209.89" r="4.62"/><circle cx="198.52" cy="227.66" r="4.62"/><circle cx="172.53" cy="237.12" r="4.62"/><circle cx="144.87" cy="237.12" r="4.62"/><circle cx="118.88" cy="227.66" r="4.62"/><circle cx="97.7" cy="209.89" r="4.62"/><circle cx="83.87" cy="185.94" r="4.62"/><circle cx="79.07" cy="158.7" r="4.62"/><circle cx="83.87" cy="131.46" r="4.62"/><circle cx="97.7" cy="107.51" r="4.62"/><circle cx="118.88" cy="89.74" r="4.62"/><circle cx="144.87" cy="80.28" r="4.62"/><circle cx="172.53" cy="80.28" r="4.62"/><circle cx="192.34" cy="66.28" r="5.7"/><circle cx="221.92" cy="83.36" r="5.7"/><circle cx="243.87" cy="109.53" r="5.7"/><circle cx="255.55" cy="141.62" r="5.7"/><circle cx="255.55" cy="175.78" r="5.7"/><circle cx="243.87" cy="207.87" r="5.7"/><circle cx="221.92" cy="234.04" r="5.7"/><circle cx="192.34" cy="251.12" r="5.7"/><circle cx="158.7" cy="257.05" r="5.7"/><circle cx="125.06" cy="251.12" r="5.7"/><circle cx="95.48" cy="234.04" r="5.7"/><circle cx="73.53" cy="207.87" r="5.7"/><circle cx="61.85" cy="175.78" r="5.7"/><circle cx="61.85" cy="141.62" r="5.7"/><circle cx="73.53" cy="109.53" r="5.7"/><circle cx="95.48" cy="83.36" r="5.7"/><circle cx="125.06" cy="66.28" r="5.7"/><circle cx="158.7" cy="60.35" r="5.7"/><circle cx="179.79" cy="39.09" r="7.04"/><circle cx="219.43" cy="53.51" r="7.04"/><circle cx="251.74" cy="80.63" r="7.04"/><circle cx="272.83" cy="117.16" r="7.04"/><circle cx="280.16" cy="158.7" r="7.04"/><circle cx="272.83" cy="200.24" r="7.04"/><circle cx="251.74" cy="236.77" r="7.04"/><circle cx="219.43" cy="263.89" r="7.04"/><circle cx="179.79" cy="278.31" r="7.04"/><circle cx="137.61" cy="278.31" r="7.04"/><circle cx="97.97" cy="263.89" r="7.04"/><circle cx="65.66" cy="236.77" r="7.04"/><circle cx="44.57" cy="200.24" r="7.04"/><circle cx="37.24" cy="158.7" r="7.04"/><circle cx="44.57" cy="117.16" r="7.04"/><circle cx="65.66" cy="80.63" r="7.04"/><circle cx="97.97" cy="53.51" r="7.04"/><circle cx="137.61" cy="39.09" r="7.04"/><circle cx="158.7" cy="8.7" r="8.7"/><circle cx="210" cy="17.75" r="8.7"/><circle cx="255.12" cy="43.79" r="8.7"/><circle cx="288.6" cy="83.7" r="8.7"/><circle cx="306.42" cy="132.65" r="8.7"/><circle cx="306.42" cy="184.75" r="8.7"/><circle cx="288.6" cy="233.7" r="8.7"/><circle cx="255.12" cy="273.61" r="8.7"/><circle cx="210" cy="299.65" r="8.7"/><circle cx="158.7" cy="308.7" r="8.7"/><circle cx="107.4" cy="299.65" r="8.7"/><circle cx="62.28" cy="273.61" r="8.7"/><circle cx="28.8" cy="233.7" r="8.7"/><circle cx="10.98" cy="184.75" r="8.7"/><circle cx="10.98" cy="132.65" r="8.7"/><circle cx="28.8" cy="83.7" r="8.7"/><circle cx="62.28" cy="43.79" r="8.7"/><circle cx="107.4" cy="17.75" r="8.7"/></g></svg><span>Learner Credential Wallet</span></div><div class="f-wallet other"><span>Other wallets</span></div></div>
+              <div class="f-host">Choose where it's kept <span class="pl">· planned</span></div>
+            </div>
+            <div class="f-arrows" data-seq="4"><div class="f-arrow"><span>one credential, by link</span><i class="f-token" aria-hidden="true"></i></div><div class="f-arrow planned"><span>a whole collection · planned</span></div></div>
+            <div class="f-col" data-seq="5">
+              <span class="f-h"><span class="cn" data-n="3">3</span>You decide who sees what</span>
+              <div class="f-recv">
+                <b>A hiring manager</b>
+                <div class="f-cr out"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#seal-riverbend"/></svg>Certificate in Data Analysis<span class="f-ok">✓</span></div>
+                <div class="f-cr planned">Can't see the rest of Maya's space</div>
+              </div>
+            </div>
+          </div>
+          <div class="f-band" data-seq="6" aria-hidden="true"><span class="cn" data-n="4">4</span><span><b>Open source.</b> The wallet and its storage service are open source.</span></div>
+        </figure>
+        <ul class="ideas">
+          <li>
+            <h3><span class="cn" data-n="1">1</span>Schools and employers can send to your space</h3>
+            <p class="idea-line">Built on open standards, so any school or employer that uses them, like Riverbend, can send credentials straight from its website.</p>
+            <dl class="idea-status"><dt class="today">Works today</dt><dd class="today">Add credentials from a website, a file, or a QR code.</dd><dt class="planned">Planned</dt><dd class="planned">Work with more school and employer systems.</dd></dl>
+          </li>
+          <li>
+            <h3><span class="cn" data-n="2">2</span>Your space, not the app's</h3>
+            <p class="idea-line">Maya's certificate sits in her Portable Web Space, and her wallet opens it.</p>
+            <dl class="idea-status"><dt class="today">Works today</dt><dd class="today">We keep your space on our servers. In Settings, you can connect another wallet built for Portable Web Spaces, and it opens the same space. You can also download your credentials as a file, and add them back to the wallet from that file.</dd><dt class="planned">Planned</dt><dd class="planned">Choose where your space is kept.</dd></dl>
+          </li>
+          <li>
+            <h3><span class="cn" data-n="3">3</span>You decide who sees what</h3>
+            <p class="idea-line">Maya shares one certificate with a hiring manager. Nothing else in her space is shared.</p>
+            <dl class="idea-status"><dt class="today">Works today</dt><dd class="today">Share one credential by link or QR code.</dd><dt class="planned">Planned</dt><dd class="planned">Share a whole collection with one link.</dd></dl>
+          </li>
+          <li>
+            <h3><span class="cn" data-n="4">4</span>Open source</h3>
+            <p class="idea-line">Riverbend's IT team can check exactly how the wallet stores students' credentials before recommending it.</p>
+            <dl class="idea-status"><dt class="today">Works today</dt><dd class="today">The wallet and its storage service are open source.</dd></dl>
+          </li>
+        </ul>
+        </div>
+        <p class="fine">As of November 2026.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="try" aria-labelledby="try-h">
+    <div class="wrap sec">
+      <div class="sec-head"><h2 id="try-h">Try it</h2></div>
+      <div class="sec-body">
+        <p>The best way to understand the <strong>wallet</strong> and a <strong>Portable Web Space</strong> is to use them together. Setting up the wallet creates your own space, and we send you a test badge to put in it. Once you're invited, it takes a couple of minutes.</p>
+                <div class="access" id="get-access">
+          <form class="access-form" id="access-form" novalidate>
+            <div class="access-left">
+              <h3 class="access-h">Request early access</h3>
+              <p>Sign up, and we'll email you your own code to set up your wallet and space. Once you're set up, you'll get the test badge below to try it with. If lots of people sign up at once, you may wait until we let the next group in.</p>
+              <div class="access-mini" role="img" aria-label="The test badge you'll get: LCW Alpha Testing Badge"><img src="/img/lcw-exp.png" alt="" width="56" height="56"><span aria-hidden="true"><span class="ab-kind">Your test badge</span><b class="ab-title">LCW Alpha Testing Badge</b><span class="ab-ok"><span>✓</span> Verified</span></span></div>
+            </div>
+            <div class="access-right">
+            <p class="access-err" id="access-err" role="alert" hidden></p>
+            <label class="access-label" for="access-name">Name</label>
+            <div class="access-row"><input type="text" id="access-name" name="name" autocomplete="name" required></div>
+            <label class="access-label" for="access-org">Organization <span class="fine">(optional)</span></label>
+            <div class="access-row"><input type="text" id="access-org" name="organization" autocomplete="organization"></div>
+            <label class="access-label" for="access-email">Email</label>
+            <div class="access-row">
+              <input type="email" id="access-email" name="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" required>
+              <button type="submit" class="btn btn-primary">Request early access</button>
+            </div>
+            <p class="fine"><span data-ph="signup-privacy">We use your name, email and organization only to run and improve the alpha. See the privacy notice.</span></p>
+            </div>
+          </form>
+          <div class="access-done" id="access-done" hidden>
+            <h3 class="access-h" id="access-done-h" tabindex="-1">Thanks for signing up</h3>
+            <p>We'll email your code to <b id="access-to"></b>. If lots of people have signed up, it may come when we let the next group in. Open it on a computer to set up your wallet and space.</p>
+            <p class="fine">Wrong address? <button type="button" class="linkish" id="access-again">Use a different email</button>.</p>
+          </div>
+        </div>
+        <h3 class="steps-h">What happens next</h3>
+        <ol class="steps">
+          <li><strong>Get your code</strong><span>We email you a code that's just for you. If lots of people sign up at once, you may wait until we let the next group in.</span></li>
+          <li><strong>Set up your wallet and space</strong><span>That email opens the wallet. We then email you to confirm your address, and once you do, your Portable Web Space is created.</span></li>
+          <li><strong>Get your test badge</strong><span>The wallet offers you a test badge. Say yes, and we email you a link that adds it to your space.</span></li>
+          <li><strong>See it in your space</strong><span>The wallet opens your space, and your badge is there. Check that it's verified (it came from the issuer and hasn't been tampered with), and try sharing it.</span></li>
+        </ol>
+        <p class="fine" data-ph="tip-same-browser">Tip: sign in on the same computer and browser you used to set up your wallet. That's where your badge is offered.</p>
+        <p class="fine">Already invited? <a href="https://alpha.lcw.app/#/login" target="_blank" rel="noopener" data-ph="wallet-link">Open the alpha wallet</a>. It works best on a computer for now. It's only expected to work with the test badge. Found a problem? <a href="#feedback" class="fb-open" data-source="Landing page: Try it">Share feedback</a>.</p>
+        <div class="ph-block" role="note">
+          <ul>
+            <li><span data-ph="notice-offline">We don't plan to change or reset the alpha while it runs, but we may take it offline if something goes seriously wrong.</span></li>
+            <li><span data-ph="notice-deletion">When the alpha ends, we delete every account and everything in it. We'll email you the date well in advance, so you can download a copy first.</span></li>
+            <li><span data-ph="notice-security">The alpha may have security weaknesses we haven't found yet.</span></li>
+            <li><span data-ph="notice-data-use">How we use your name, email and organization, your choice about being contacted, and what you send with feedback, and how long we keep them.</span></li>
+            <li><span data-ph="notice-terms">By using the alpha, you agree to the <a href="#">alpha terms of use</a> and the <a href="#">privacy notice</a>.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="band" aria-labelledby="faq-h">
+    <div class="wrap sec">
+      <div class="sec-head"><h2 id="faq-h">Frequently asked questions</h2></div>
+      <div class="sec-body">
+        <p>Quick answers about the alpha, the wallet, and your Portable Web Space.</p>
+        <div class="faq">
+          <details class="qa" id="faq-alpha">
+            <summary><span class="qa-q">What is the alpha, and how do I get access?</span></summary>
+            <div class="qa-a">
+              <p>The alpha is an early test version of Learner Credential Wallet. Use it with the test badge we send you, to see how the wallet and your Portable Web Space work together. Don't use it for real records: it may stop working, and when the alpha ends, your account and everything in it are deleted. We'll email you the date well in advance, so you can download a copy first. A version you can use for your real credentials is planned for early 2027.</p>
+              <p><a href="#get-access" data-focus="access-name">Request early access</a>, and we'll email you a code that's just for you. If lots of people sign up at once, you may wait until we let the next group in.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-phone">
+            <summary><span class="qa-q">I already use the Learner Credential Wallet phone app. What changes for me?</span></summary>
+            <div class="qa-a">
+              <p><span data-ph="faq-phone">Nothing changes for now. The alpha is a separate test, so keep using the phone app for your real credentials. Schools that send credentials to the phone app keep sending them there.</span></p>
+            </div>
+          </details>
+          <details class="qa" id="faq-space">
+            <summary><span class="qa-q">What is a Portable Web Space?</span></summary>
+            <div class="qa-a">
+              <p>It's where your credentials are kept: storage that belongs to you, not to the wallet app. The wallet is how you open it, the way any mail app can open your mailbox.</p>
+              <p>For the alpha, we store your space on our servers. You can open it with Learner Credential Wallet or, in Settings, connect another wallet built for Portable Web Spaces. Choosing where your space is kept comes next. <a href="#idea">See how it works</a>.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-devices">
+            <summary><span class="qa-q">Which devices and browsers can I use?</span></summary>
+            <div class="qa-a">
+              <p>The wallet runs in your web browser, so there's nothing to install. It works best on a computer for now.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-passkey">
+            <summary><span class="qa-q">Should I sign in with a password or a passkey?</span></summary>
+            <div class="qa-a">
+              <p>Either works. A passkey lets you sign in with your fingerprint, face, or device PIN instead of typing a password. Either way, closing the tab signs you out. On a browser where you've added a passkey, your fingerprint, face, or PIN opens the wallet again.</p>
+              <p>After you sign in with a password, the wallet offers to add a passkey. Some browsers and password managers can't make the kind of passkey the wallet needs. If yours can't, the wallet tells you, and you can keep using your password.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-add">
+            <summary><span class="qa-q">How do I add a credential?</span></summary>
+            <div class="qa-a">
+              <p>In the wallet, choose <b>Add Credential</b>. You can paste the credential, choose or drag in its file, or scan its QR code with your camera or from a picture.</p>
+              <p>You can also get a credential straight from an issuer's website. When the site asks which wallet to use, choose Learner Credential Wallet. That's how your test badge arrives.</p>
+              <p>The wallet is built for credentials that follow open standards: <a href="https://www.w3.org/TR/vc-data-model-2.0/" target="_blank" rel="noopener">W3C Verifiable Credentials</a>, including <a href="https://www.imsglobal.org/spec/ob/v3p0/" target="_blank" rel="noopener">Open Badges 3.0</a>.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-copy">
+            <summary><span class="qa-q">Can I keep a copy of my credentials?</span></summary>
+            <div class="qa-a">
+              <p>Yes. In the wallet, open <b>Settings</b> and choose <b>Download my data</b>. It saves your credentials in one file, with their tags. To bring them back, choose <b>Import my data</b> and pick that file.</p>
+              <p>The file isn't encrypted, so keep it somewhere safe.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-verified">
+            <summary><span class="qa-q">What does "verified" mean?</span></summary>
+            <div class="qa-a">
+              <p>When you open a credential, the wallet checks that the issuer signed it and it hasn't been changed since, that it hasn't expired, and that the issuer hasn't revoked it. It also looks the issuer up in lists of known issuers.</p>
+              <p>If you see "We couldn't confirm who issued this," the credential itself may be fine. Some of those lists can't be checked from a browser yet.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-share">
+            <summary><span class="qa-q">How do I share a credential, and can I stop sharing it?</span></summary>
+            <div class="qa-a">
+              <p>Open the credential, choose <b>Share</b>, then <b>Anyone with the link</b>. You get a link to send, a QR code, and an option to add it to LinkedIn. People who open the link see that credential and whether it checks out, and nothing else in your space.</p>
+              <p>To stop sharing, choose <b>Only you</b>, then <b>Take it down</b>. The link and QR code stop working, including for anyone you've already sent them to.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-private">
+            <summary><span class="qa-q">Is my data private?</span></summary>
+            <div class="qa-a">
+              <p><span data-ph="faq-private">The wallet encrypts what you add in your browser, before it's stored in your space, so our storage servers hold only an encrypted copy. A credential you share is the exception: anyone with the link can see it until you take it down. We're still improving how this works.</span> <span data-ph="faq-private-notice">See the privacy notice.</span></p>
+            </div>
+          </details>
+        </div>
+        <p class="fine">Didn't find your answer? Email us at <a href="mailto:support@dccommons.org?subject=Question%20about%20the%20alpha%20web%20wallet" target="_blank" rel="noopener">support@dccommons.org</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="involved" aria-labelledby="inv-h">
+    <div class="wrap sec">
+      <div class="sec-head"><h2 id="inv-h">Get involved</h2></div>
+      <div class="sec-body">
+        <p>Learn more, try it with us, or help shape what comes next.</p>
+        <div class="tools">
+          <div class="tool">
+            <h3 class="tool-name">Read the blog post</h3>
+            <p data-ph="blog-link">Why we're building the wallet this way.</p>
+          </div>
+          <div class="tool">
+            <h3 class="tool-name">Vendors and issuers</h3>
+            <p>If you issue credentials or build the systems that do, we want to help you succeed. Vendor testing starts <span data-ph="vendors-when">in spring</span>. <span data-ph="vendors-how">How to take part, to come.</span></p>
+          </div>
+          <div class="tool">
+            <h3 class="tool-name">Schools and community organizations</h3>
+            <p>Want to explain this to the learners you work with, or follow along as it grows? <span data-ph="partners-how">How partners can take part, to come.</span></p>
+            <div class="tool-links"><a href="https://dccommons.org/#contact" target="_blank" rel="noopener">Get in touch</a></div>
+          </div>
+          <div class="tool">
+            <h3 class="tool-name">Tell us what you find</h3>
+            <p>Testing the alpha? Tell us what worked, what didn't, and what confused you. It takes a couple of minutes.</p>
+            <div class="tool-links"><a href="#feedback" class="fb-open" data-source="Landing page: Get involved">Share feedback</a><a href="https://github.com/digitalcredentials/lcw-front-end/issues" target="_blank" rel="noopener">Open an issue on GitHub</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="deeper" class="band" aria-labelledby="deeper-h">
+    <div class="wrap sec">
+      <div class="sec-head"><h2 id="deeper-h">Go deeper</h2></div>
+      <div class="sec-body">
+        <p>For anyone who wants the technical detail.</p>
+        <div class="tools">
+          <div class="tool tool-wide arch">
+            <h3 class="tool-name">The architecture behind the alpha</h3>
+            <p>The three open specifications the wallet and your Portable Web Space are built on.</p>
+            <ul class="parts">
+              <li>
+                <h4 class="part-name">Portable Web Spaces</h4>
+                <p>The storage your credentials live in, which belongs to you. Formerly Wallet Attached Storage.</p>
+                <div class="tool-links"><a href="https://w3c-ccg.github.io/portable-web-spaces-spec/" target="_blank" rel="noopener">Specification</a><a href="https://github.com/w3c-ccg/portable-web-spaces-spec" target="_blank" rel="noopener">Repository</a></div>
+              </li>
+              <li>
+                <h4 class="part-name">Authorization Capabilities (ZCAP)</h4>
+                <p>The permissions the wallet uses to open your space: signed requests that show it's allowed to read or write what's in it.</p>
+                <div class="tool-links"><a href="https://w3c-ccg.github.io/zcap-spec/" target="_blank" rel="noopener">Specification</a><a href="https://github.com/w3c-ccg/zcap-spec" target="_blank" rel="noopener">Repository</a></div>
+              </li>
+              <li>
+                <h4 class="part-name">Encrypted Data Vaults</h4>
+                <p>Storage that holds only encrypted data. The wallet uses it to encrypt what you add in your browser, before it's stored in your space.</p>
+                <div class="tool-links"><a href="https://identity.foundation/edv-spec/" target="_blank" rel="noopener">Specification</a><a href="https://github.com/decentralized-identity/edv-spec" target="_blank" rel="noopener">Repository</a></div>
+              </li>
+            </ul>
+          </div>
+          <div class="tool tool-wide code">
+            <h3 class="tool-name">The code</h3>
+            <p data-ph="repo-list">The repositories behind the alpha, all public on GitHub.</p>
+            <div class="repo-groups">
+              <div>
+                <h4 class="part-name">The web wallet</h4>
+                <ul class="repos">
+                  <li><span class="rd">The wallet app</span><a href="https://github.com/digitalcredentials/lcw-front-end" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">lcw-front-end</span></a></li>
+                  <li><span class="rd">Accounts, sign-in and the account emails</span><a href="https://github.com/digitalcredentials/lcw-back-end" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">lcw-back-end</span></a></li>
+                  <li><span class="rd">The storage server for each person's Portable Web Space</span><a href="https://github.com/digitalcredentials/was-server-aws" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">was-server-aws</span></a></li>
+                  <li><span class="rd">Shows and checks credentials inside the wallet</span><a href="https://github.com/digitalcredentials/verifier-plugin" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">verifier-plugin</span></a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 class="part-name">Also used in the alpha</h4>
+                <ul class="repos">
+                  <li><span class="rd">This welcome page and its sign-up</span><a href="https://github.com/digitalcredentials/lcw-welcome" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">lcw-welcome</span></a></li>
+                  <li><span class="rd">Issues the test badge</span><a href="https://github.com/digitalcredentials/aws-lambda-issuer" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">aws-lambda-issuer</span></a></li>
+                  <li><span class="rd">The page a shared credential opens on</span><a href="https://github.com/digitalcredentials/verifier-plus" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">verifier-plus</span></a></li>
+                  <li><span class="rd">The verification library the wallet and VerifierPlus share</span><a href="https://github.com/digitalcredentials/verifier-core" target="_blank" rel="noopener">github.com/digitalcredentials/<wbr><span class="rn">verifier-core</span></a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="tool tool-wide">
+            <h3 class="tool-name">Interoperability standards</h3>
+            <p data-ph="standards-link">The open standards Digital Credentials Commons uses and advocates for, so credentials work across schools, wallets, and employers. Each is listed with its version and how far our support goes.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-text">
+      <img src="/img/dcc-lockup-one-line.svg" alt="Digital Credentials Commons">
+      <span>Learner Credential Wallet is made by Digital Credentials Commons, which is hosted by Strada Education Foundation.</span>
+    </div>
+    <nav aria-label="Footer">
+      <a href="https://dccommons.org" target="_blank" rel="noopener">dccommons.org</a>
+      <a href="https://github.com/digitalcredentials" target="_blank" rel="noopener">GitHub</a>
+      <a href="#" data-ph="footer-terms">Terms of use</a>
+      <a href="#" data-ph="footer-privacy">Privacy</a>
+    </nav>
+  </div>
+</footer>
+
+<dialog class="fb" id="fb" aria-labelledby="fb-h">
+  <div class="fb-in">
+    <div class="fb-top">
+      <h2 class="fb-h" id="fb-h" tabindex="-1">Share feedback</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <form id="fb-form" novalidate>
+      <p>Tell us what worked, what didn't, and what confused you. Please don't include passwords or other private details.</p>
+      <fieldset id="fb-trying" aria-describedby="fb-trying-err">
+        <legend>What were you trying to do?</legend>
+        <div class="fb-choices">
+          <label class="fb-choice"><input type="radio" name="trying" value="Set up my wallet and space">Set up my wallet and space</label>
+          <label class="fb-choice"><input type="radio" name="trying" value="Get the test badge">Get the test badge</label>
+          <label class="fb-choice"><input type="radio" name="trying" value="Check that it's verified">Check that it's verified</label>
+          <label class="fb-choice"><input type="radio" name="trying" value="Share it">Share it</label>
+          <label class="fb-choice"><input type="radio" name="trying" value="Something else" id="fb-other-r">Something else</label>
+          <input type="text" class="fb-other" id="fb-other" aria-label="What were you trying to do?" hidden>
+        </div>
+        <p class="fb-err" id="fb-trying-err" hidden></p>
+      </fieldset>
+      <div class="fb-field">
+        <label class="fb-label" for="fb-happened">What happened?<span class="fb-hint" id="fb-happened-hint">What did you expect, and what happened instead?</span></label>
+        <textarea id="fb-happened" aria-describedby="fb-happened-hint fb-happened-err"></textarea>
+        <p class="fb-err" id="fb-happened-err" hidden></p>
+      </div>
+      <div class="fb-field">
+        <span class="fb-label">Screenshots <span class="fb-hint" style="display:inline">(optional)</span><span class="fb-hint" id="fb-up-hint">Add them on a separate Google form. It opens in a new tab. You'll need to sign in with a Google account, and Google shares that account's name and email with us.</span><span class="fb-hint fb-priv" id="fb-up-priv"><span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></span></span>
+        <a class="btn btn-secondary fb-up" id="fb-up" href="https://docs.google.com/forms/d/e/1FAIpQLSdBaeIyfdC9OqGM_WsMnzRDLtiz3RLK-RXIw5T23LjBLT_7wQ/viewform" target="_blank" rel="noopener" aria-describedby="fb-up-hint fb-up-priv">Add screenshots</a>
+        <p class="fine fb-opened" id="fb-opened" role="status" hidden>Opened in a new tab. When you've added them, come back here and press Send feedback.</p>
+      </div>
+      <div class="fb-field">
+        <label class="fb-label" for="fb-email">Your email, if we can follow up <span class="fb-hint" style="display:inline">(optional)</span></label>
+        <input type="email" id="fb-email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" aria-describedby="fb-email-err">
+        <p class="fb-err" id="fb-email-err" hidden></p>
+      </div>
+      <p class="fine fb-auto" id="fb-auto">We'll also send your browser and device details (<b id="fb-device">your browser</b>) to help us reproduce problems.</p>
+      <p class="fine"><span data-ph="feedback-privacy">We use what you send only to run and improve the alpha. See the privacy notice.</span></p>
+      <div class="fb-actions">
+        <button type="submit" class="btn btn-primary" id="fb-send">Send feedback</button>
+        <button type="button" class="btn btn-secondary" id="fb-cancel">Cancel</button>
+      </div>
+      <p class="fb-status" id="fb-status" role="status"></p>
+    </form>
+    <div class="fb-done" id="fb-done" hidden>
+      <p>We read every report. If you left your email, we may follow up.</p>
+      <p class="fbp-only">You can close this tab and go back to the wallet.</p>
+      <div class="fb-actions">
+        <button type="button" class="btn btn-primary" id="fb-close">Close</button>
+        <button type="button" class="linkish" id="fb-again">Send another</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* Always open at the top, even when the link ends in a section anchor like #idea.
+   The anchor is kept in LCW_START_HASH first, so #feedback can still open the feedback form. */
+var LCW_START_HASH = location.hash;
+(function(){
+  try { history.scrollRestoration = 'manual'; } catch(e){}
+  if(!location.hash) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  function top(){
+    var h = document.documentElement, s = h.style.scrollBehavior;
+    h.style.scrollBehavior = 'auto'; window.scrollTo(0,0); h.style.scrollBehavior = s;
+  }
+  top(); window.addEventListener('load', function(){ top(); setTimeout(top, 0); });
+})();
+(function(){
+  // Phones: the menu button shows the section links under the header (same behavior as dccommons.org)
+  var menuBtn=document.getElementById('menu-btn'), menu=document.getElementById('mobile-menu');
+  function setMenu(open){ menu.hidden=!open; menuBtn.setAttribute('aria-expanded', String(open)); menuBtn.setAttribute('aria-label', open?'Close menu':'Open menu'); }
+  menuBtn.addEventListener('click', function(){ setMenu(menu.hidden); });
+  menu.addEventListener('click', function(e){ if(e.target.closest('a')){ setMenu(false); } });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape' && !menu.hidden){ setMenu(false); menuBtn.focus(); } });
+  document.addEventListener('click', function(e){ if(!menu.hidden && !e.target.closest('#mobile-menu, #menu-btn')){ setMenu(false); } });
+  var narrow=window.matchMedia('(max-width: 860px)'), onNarrow=function(m){ if(!m.matches){ setMenu(false); } };
+  if(narrow.addEventListener){ narrow.addEventListener('change', onNarrow); } else { narrow.addListener(onNarrow); }
+
+  var ax=document.getElementById('ax'), axBtn=document.getElementById('ax-btn'), axReset=document.getElementById('ax-reset');
+  var nl=document.getElementById('ax-note-l'), nr=document.getElementById('ax-note-r'), axStep=document.getElementById('ax-step'), axGoal=document.getElementById('ax-goal');
+  var axState=0;
+  function axRender(){
+    ax.classList.toggle('removed', axState>=1);
+    ax.classList.toggle('back', axState===2);
+    ax.querySelector('.ax-left .ax-app').setAttribute('aria-hidden', String(axState>=1));
+    ax.querySelector('.ax-left .ax-gone').setAttribute('aria-hidden', String(axState===0));
+    ax.querySelector('.ax-right .ax-open').setAttribute('aria-hidden', String(axState===1));
+    axGoal.classList.toggle('on', axState>=1);
+    if(axState===0){
+      axBtn.textContent='The app shuts down'; axBtn.hidden=false; axReset.hidden=true; axStep.textContent='Step 1 of 3';
+      nl.className='ax-note'; nl.innerHTML='The app holds them.';
+      nr.className='ax-note'; nr.innerHTML='Her wallet opens her space.';
+    } else if(axState===1){
+      axBtn.textContent='Open it with another wallet'; axReset.hidden=false; axStep.textContent='Step 2 of 3';
+      nl.className='ax-note bad'; nl.innerHTML='<b>Gone</b>, along with the app’s account.';
+      nr.className='ax-note good'; nr.innerHTML='<b>Still here.</b> The space is Maya’s, not the app’s.';
+    } else {
+      axBtn.hidden=true; axReset.hidden=false; axStep.textContent='Step 3 of 3';
+      nl.className='ax-note bad'; nl.innerHTML='<b>Still gone.</b> There’s no account left to open.';
+      nr.className='ax-note good'; nr.innerHTML='<b>Back</b>, in another wallet. Same space, same credentials.';
+    }
+  }
+  var axLive=document.getElementById('ax-live'), axHeader=document.querySelector('.site-header');
+  var axReduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Screen readers hear both outcomes, not just the step count
+  function axAnnounce(){
+    axLive.textContent=axStep.textContent+'. In an app’s account: '+nl.textContent+' In Maya’s own space: '+nr.textContent+(axState>=1?' '+axGoal.textContent:'');
+  }
+  // On short screens the button can sit below the columns it changes: bring them into view
+  function axShow(){
+    var top=ax.getBoundingClientRect().top;
+    if(top<axHeader.offsetHeight){ ax.scrollIntoView({block:'start',behavior:axReduced?'auto':'smooth'}); }
+  }
+  axBtn.addEventListener('click', function(){ axState=Math.min(2,axState+1); axRender(); axAnnounce(); axShow(); if(axBtn.hidden){ axReset.focus(); } });
+  axReset.addEventListener('click', function(){ axState=0; axRender(); axAnnounce(); axShow(); axBtn.focus(); });
+  axRender();
+
+  // The "How it works" diagram: plays once, in reading order, when it is fully in view
+  // (or fills the screen, on phones where it is taller than the screen). Reduced motion, or no
+  // IntersectionObserver, leaves it unarmed: the final state shows straight away.
+  var flow=document.querySelector('.flow');
+  if(flow && !axReduced && 'IntersectionObserver' in window){
+    flow.classList.add('is-armed');
+    var seq=function(n){ return flow.querySelector('[data-seq="'+n+'"]'); };
+    var landing=flow.querySelector('.f-space .f-cr.out'), tick=flow.querySelector('.f-ok');
+    var steps=[
+      [0,    function(){ seq(1).classList.add('on'); }],
+      [450,  function(){ seq(2).classList.add('on'); seq(2).querySelector('.f-arrow').classList.add('go'); }],
+      [1350, function(){ seq(3).classList.add('on'); landing.classList.add('land'); }],
+      [2050, function(){ landing.classList.remove('land'); seq(4).classList.add('on'); seq(4).querySelector('.f-arrow').classList.add('go'); }],
+      [2950, function(){ seq(5).classList.add('on'); }],
+      [3250, function(){ tick.classList.add('on'); }],
+      [3700, function(){ seq(6).classList.add('on'); }]
+    ];
+    var played=false;
+    var io=new IntersectionObserver(function(entries){
+      var e=entries[0];
+      if(played){ return; }
+      var room=window.innerHeight-axHeader.offsetHeight;
+      var fullyShown=e.intersectionRect.height>=0.9*Math.min(room, e.boundingClientRect.height);
+      var scrolledPast=e.boundingClientRect.top<axHeader.offsetHeight && e.boundingClientRect.bottom<window.innerHeight*0.5;
+      if(fullyShown || scrolledPast){
+        played=true; io.disconnect();
+        steps.forEach(function(st){ setTimeout(st[1], st[0]); });
+      }
+    }, {rootMargin:'-'+axHeader.offsetHeight+'px 0px 0px 0px', threshold:Array.from({length:51},function(_,i){ return i/50; })});
+    io.observe(flow);
+  }
+  document.querySelectorAll('a[href="#"]').forEach(function(a){ a.addEventListener('click', function(e){ e.preventDefault(); }); });
+})();
+/* Early-access mock-up: checks the email, then shows the "thanks for signing up" state. Nothing is saved. */
+(function(){
+  var form=document.getElementById('access-form'), input=document.getElementById('access-email'), nameIn=document.getElementById('access-name'),
+      err=document.getElementById('access-err'), done=document.getElementById('access-done'),
+      to=document.getElementById('access-to'), doneH=document.getElementById('access-done-h'),
+      again=document.getElementById('access-again');
+  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  function showErr(msg){ err.textContent=msg; err.hidden=false; input.setAttribute('aria-invalid','true'); input.setAttribute('aria-describedby','access-err'); input.focus(); }
+  function clearErr(){ err.hidden=true; err.textContent=''; input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby'); }
+  input.addEventListener('input', function(){ if(!err.hidden && EMAIL.test(input.value.trim())) clearErr(); });
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var v=input.value.trim();
+    if(!nameIn.value.trim()){ err.textContent='Enter your name.'; err.hidden=false; nameIn.setAttribute('aria-invalid','true'); nameIn.setAttribute('aria-describedby','access-err'); nameIn.focus(); return; }
+    nameIn.removeAttribute('aria-invalid'); nameIn.removeAttribute('aria-describedby');
+    if(!v){ showErr('Enter your email.'); return; }
+    if(!EMAIL.test(v)){ showErr('Check your email address. It should look like name@example.org.'); return; }
+    clearErr(); to.textContent=v; form.hidden=true; done.hidden=false; doneH.focus();
+  });
+  again.addEventListener('click', function(){ done.hidden=true; form.hidden=false; input.select(); input.focus(); });
+  document.querySelectorAll('a[data-focus]').forEach(function(a){
+    a.addEventListener('click', function(){
+      var t=document.getElementById(a.getAttribute('data-focus'));
+      /* after the jump, so the fragment navigation doesn't take focus back */
+      setTimeout(function(){ if(t && !t.closest('[hidden]')) t.focus({preventScroll:true}); }, 0);
+    });
+  });
+})();
+
+/* FAQ links: #faq goes to the section; #faq-<question> (e.g. #faq-passkey) also opens that answer.
+   Runs after the start-at-top reset, so a link from the wallet or an email lands on the answer. */
+(function(){
+  function go(hash, smooth){
+    if(!/^#faq(-[a-z]+)?$/.test(hash||'')) return;
+    var t=document.getElementById(hash.slice(1)); if(!t) return;
+    if(t.tagName==='DETAILS') t.open=true;
+    var h=document.documentElement, s=h.style.scrollBehavior;
+    if(!smooth) h.style.scrollBehavior='auto';   // the page scrolls smoothly by default; arriving from a link should jump
+    t.scrollIntoView({block:'start', behavior:smooth?'smooth':'auto'});
+    h.style.scrollBehavior=s;
+    if(t.tagName==='DETAILS') t.querySelector('summary').focus({preventScroll:true});
+  }
+  function start(){ setTimeout(function(){ go(LCW_START_HASH, false); }, 30); }
+  if(document.readyState==='complete') start(); else window.addEventListener('load', start);
+  window.addEventListener('hashchange', function(){ go(location.hash, true); });
+})();
+
+/* Feedback form. Sends to a Google Form, the same way dccommons.org's "Get in touch" form does.
+   Entry IDs come from the form's public page (or "Get pre-filled link"). The radio values must match
+   the form's options exactly, and the Google Form must not require anything this form doesn't, or add
+   response validation: Google drops a submission that fails either, and the page can't tell.
+   "Something else" is a plain option there, so what the tester typed goes at the top of "What happened?".
+   Open the form from anywhere with a link ending in #feedback, or the full page at /feedback; add ?from=<place> to record where. */
+var FEEDBACK_FORM = {
+  action: "https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/formResponse",
+  entries: { trying:"entry.413115414", happened:"entry.667984208", screenshot:"entry.991851856", email:"entry.205670620",
+             device:"entry.1052076762", source:"entry.566921339" }
+};
+/* Screenshots go on a separate Google Form, because a form with an upload question makes everyone sign in to Google.
+   Each feedback gets a reference. It is filled in on the upload form (reference = that form's "Feedback reference" entry,
+   from its "Get pre-filled link"), and sent in the main form's screenshot field when the tester opened the upload form,
+   so the team can match the two. With no reference entry set, the upload form opens with that box empty. */
+var UPLOAD_FORM = {
+  url: "https://docs.google.com/forms/d/e/1FAIpQLSdBaeIyfdC9OqGM_WsMnzRDLtiz3RLK-RXIw5T23LjBLT_7wQ/viewform",
+  reference: "entry.370601510"
+};
+(function(){
+  var dlg=document.getElementById('fb'), form=document.getElementById('fb-form'), done=document.getElementById('fb-done'),
+      fbH=document.getElementById('fb-h'), status=document.getElementById('fb-status'), send=document.getElementById('fb-send'),
+      other=document.getElementById('fb-other'), otherR=document.getElementById('fb-other-r'),
+      happened=document.getElementById('fb-happened'), email=document.getElementById('fb-email'),
+      up=document.getElementById('fb-up'), opened=document.getElementById('fb-opened');
+  if(!dlg || typeof dlg.showModal!=='function') return;
+  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/, source='', ref='', upOpened=false;
+  function newRef(){ var c='23456789ABCDEFGHJKMNPQRSTUVWXYZ', a=new Uint32Array(6), r='FB-';
+    try { crypto.getRandomValues(a); } catch(e){ for(var i=0;i<6;i++) a[i]=Math.floor(Math.random()*1e9); }
+    for(var j=0;j<6;j++) r+=c[a[j]%c.length];
+    ref=r; upOpened=false; opened.hidden=true;
+    up.href=UPLOAD_FORM.url+(UPLOAD_FORM.reference ? '?usp=pp_url&'+UPLOAD_FORM.reference+'='+encodeURIComponent(ref) : ''); }
+  newRef();
+  up.addEventListener('click', function(){ upOpened=true; opened.hidden=false; });
+  function device(){
+    var u=navigator.userAgent;
+    var b=/Edg\//.test(u)?'Edge':/OPR\//.test(u)?'Opera':/Firefox\//.test(u)?'Firefox':/Chrome\//.test(u)?'Chrome':/Safari\//.test(u)?'Safari':'another browser';
+    var o=/iPhone|iPad/.test(u)?'iPhone or iPad':/Android/.test(u)?'Android':/Mac OS X/.test(u)?'a Mac':/Windows/.test(u)?'Windows':/CrOS/.test(u)?'a Chromebook':/Linux/.test(u)?'Linux':'another device';
+    return b+' on '+o;
+  }
+  var dev=device(); document.getElementById('fb-device').textContent=dev;
+  document.getElementById('fb-auto').hidden=!FEEDBACK_FORM.entries.device;   // say so only when it's actually sent
+  function err(id,msg,focusEl){ var e=document.getElementById(id+'-err'), f=focusEl||document.getElementById(id);
+    e.textContent=msg; e.hidden=false; if(f.tagName!=='FIELDSET') f.setAttribute('aria-invalid','true'); (f.tagName==='FIELDSET'?f.querySelector('input'):f).focus(); }
+  function clear(){ form.querySelectorAll('.fb-err').forEach(function(e){ e.hidden=true; e.textContent=''; });
+    form.querySelectorAll('[aria-invalid]').forEach(function(f){ f.removeAttribute('aria-invalid'); }); status.textContent=''; status.className='fb-status'; }
+  function reset(){ form.reset(); other.hidden=true; clear(); done.hidden=true; form.hidden=false; fbH.textContent='Share feedback'; newRef(); }
+  function open(src){ source=src||''; if(!done.hidden) reset(); dlg.showModal(); var first=form.querySelector('input[name=trying]:checked')||form.querySelector('input[name=trying]'); if(!form.hidden) first.focus(); }
+  document.querySelectorAll('.fb-open').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); open(b.getAttribute('data-source')); }); });
+  /* a link from anywhere else that ends in #feedback opens the form too */
+  function param(){ var f=null; try { f=new URLSearchParams(location.search).get('from'); } catch(e){} return f; }
+  function fromLink(){ return param()||'Link'; }
+  /* Full page: the same form at its own address, /feedback. The build puts a copy of this page there,
+     so both places always match. The wallet's feedback button links to /feedback?from=wallet. */
+  var inner=dlg.querySelector('.fb-in'), slot=document.getElementById('fbp-slot');
+  var onPage=/\/feedback(\/(index\.html)?)?$/.test(location.pathname);
+  if(onPage){
+    slot.appendChild(inner); document.body.classList.add('fbp-on');
+    fbH.setAttribute('role','heading'); fbH.setAttribute('aria-level','1');
+    source='Feedback page'+(param()?': '+param():'');
+    document.title='Share feedback · '+document.title;
+    document.querySelector('.site-header .brand').setAttribute('href','/');   // the logo goes back to the welcome page
+    fbH.focus({preventScroll:true});
+  }
+  function byHash(){
+    if(location.hash!=='#feedback') return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+    if(onPage){ fbH.focus(); return; }   // the form is already on this page
+    open(fromLink()); }
+  if(LCW_START_HASH==='#feedback' && !onPage) open(fromLink());
+  window.addEventListener('hashchange', byHash);
+  ['fb-x','fb-cancel','fb-close'].forEach(function(id){ document.getElementById(id).addEventListener('click', function(){ dlg.close(); }); });
+  dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.close(); });   // a click on the backdrop
+  document.getElementById('fb-again').addEventListener('click', function(){ reset(); form.querySelector('input[name=trying]').focus(); });
+  form.addEventListener('change', function(e){ if(e.target.name==='trying'){ other.hidden=!otherR.checked; if(otherR.checked) other.focus(); } });
+  form.addEventListener('submit', function(e){
+    e.preventDefault(); clear();
+    var pick=form.querySelector('input[name=trying]:checked'), what=happened.value.trim(), mail=email.value.trim();
+    if(!pick){ err('fb-trying','Choose what you were trying to do.'); return; }
+    if(pick===otherR && !other.value.trim()){ err('fb-trying','Say what you were trying to do, or choose another option.', other); return; }
+    if(!what){ err('fb-happened','Tell us what happened.'); return; }
+    if(mail && !EMAIL.test(mail)){ err('fb-email','Check your email address. It should look like name@example.org.'); return; }
+    function finish(){ form.hidden=true; done.hidden=false; fbH.textContent='Thanks for telling us'; fbH.focus(); }
+    var E=FEEDBACK_FORM.entries;
+    if(!FEEDBACK_FORM.action || !E.trying || !E.happened){ finish(); return; }   // mock-up: nothing is sent
+    var data=new URLSearchParams();
+    data.append(E.trying, pick.value);
+    data.append(E.happened, pick===otherR ? 'Trying to: '+other.value.trim()+'\n\n'+what : what);
+    if(E.device) data.append(E.device, dev+' | '+navigator.userAgent+' | '+innerWidth+'x'+innerHeight);
+    if(upOpened && E.screenshot) data.append(E.screenshot, 'On the upload form, reference '+ref);
+    if(mail && E.email) data.append(E.email, mail);
+    if(E.source) data.append(E.source, source||'unknown');
+    var label=send.textContent; send.disabled=true; send.textContent='Sending…';
+    /* If the browser or network blocks the send, offer Google's own form with the answers already filled in, so nothing is lost. */
+    function fallback(){
+      var u=FEEDBACK_FORM.action.replace(/\/formResponse$/,'/viewform')+'?usp=pp_url&'+data.toString();
+      status.textContent=''; status.className='fb-status';
+      var lead=document.createElement('span'); lead.className='fb-status-err'; lead.textContent="We couldn't send this from here. ";
+      var a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener'; a.textContent='Send it on Google Forms';
+      a.addEventListener('click', function(){ setTimeout(function(){ status.textContent='Opened in a new tab. Press Submit there to send it.'; }, 0); });
+      status.append(lead, 'Your answers are already filled in. ', a, '.');
+      status.scrollIntoView({block:'nearest'});
+    }
+    fetch(FEEDBACK_FORM.action, { method:'POST', mode:'no-cors', body:data })
+      .then(finish)
+      .catch(fallback)
+      .then(function(){ send.disabled=false; send.textContent=label; });
+  });
+})();
+</script>
+</body>
+</html>
