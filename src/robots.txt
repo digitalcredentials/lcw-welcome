@@ -1,0 +1,3 @@
+# Kept out of search engines until launch (see README, "Before launch").
+User-agent: *
+Disallow: /
