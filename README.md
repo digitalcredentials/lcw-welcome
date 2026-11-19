@@ -12,7 +12,7 @@ The page has two addresses:
 - `/`: the welcome page. A link ending in `#faq-<question>` (for example `#faq-passkey`) opens that answer, and `#feedback` opens the feedback pop-up.
 - `/feedback`: the same feedback form on a page of its own. The wallet's feedback button links to `/feedback?from=wallet`.
 
-On either one, `?from=<place>` records where a feedback link came from.
+Add `?from=<place>` to a `#feedback` link, or to `/feedback`, to record where it came from.
 
 ## Run it
 
@@ -40,7 +40,7 @@ The tests intercept every request to Google Forms, so they never send real feedb
 
 ## Deploy
 
-Run `npm run build` and upload `dist/` to a static host. The host must serve `/feedback` from `feedback/index.html`. Most static hosts do this already. CloudFront with an S3 origin needs a small function that adds `index.html` to paths ending in a folder.
+Run `npm run build` and upload `dist/` to the root of a static host. The host must serve `/feedback` (no trailing slash, since that's what the wallet links to) from `feedback/index.html`, either directly or by redirecting to `/feedback/` with the query string kept. Without the query string, feedback from the wallet isn't marked as coming from the wallet. Most static hosts do this already. CloudFront with an S3 origin doesn't: it needs a small function that rewrites `/feedback` and `/feedback/` to `/feedback/index.html`.
 
 ## Feedback forms
 

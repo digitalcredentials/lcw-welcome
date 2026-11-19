@@ -287,7 +287,7 @@ test.describe('full feedback page', () => {
     const { posts } = await guard(context);
     await page.goto('/feedback?from=wallet');
     await page.click('.site-header .brand');
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL('/');
     await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
     await expect(page.locator('.hero')).toBeVisible();
     await page.click('.fb-open[data-source="Landing page: Get involved"]');
@@ -298,6 +298,20 @@ test.describe('full feedback page', () => {
     await page.click('#fb-send');
     await expect(page.locator('#fb-done')).toBeVisible();
     expect(posts[0].get(E.source)).toBe('Landing page: Get involved');
+  });
+
+  test('/feedback/index.html is the full page too, and other paths are not', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/feedback/index.html?from=wallet');
+    await expect(page.locator('#fbp-slot #fb-form')).toBeVisible();
+    await page.goto('/index.html');
+    await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
+    await expect(page.locator('.hero')).toBeVisible();
+  });
+
+  test('a malformed address gets an error, and the local server keeps running', async ({ request }) => {
+    expect((await request.get('/%')).status()).toBe(400);
+    expect((await request.get('/')).status()).toBe(200);
   });
 
   test('#feedback on the full page keeps the form on the page', async ({ page, context }) => {

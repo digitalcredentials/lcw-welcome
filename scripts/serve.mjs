@@ -10,7 +10,8 @@ const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const path = normalize(decodeURIComponent(url.pathname));
+  let path;
+  try { path = normalize(decodeURIComponent(url.pathname)); } catch { res.writeHead(400).end(); return; }
   let file = join(root, path);
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   try {
