@@ -155,7 +155,7 @@ test.describe('feedback pop-up', () => {
       expect(posts[0].get(E.happened)).toBe('TEST ONLY: badge email never arrived.');
       expect(posts[0].get(E.screenshot)).toBe(`On the upload form, reference ${ref}`);
       expect(posts[0].get(E.source)).toBe('Link');
-      expect(posts[0].get(E.device)).toMatch(/^(Chrome|Safari|Firefox) on .+ \| Mozilla\/5\.0 /);
+      expect(posts[0].get(E.device)).toMatch(/^(Chrome|Safari|Firefox|Edge|Opera|another browser) on .+ \| Mozilla\/5\.0 .+ \| \d+x\d+$/);
       expect(posts[0].has(E.email)).toBe(false);
       expect(posts[0].has('entry.1730067921')).toBe(false);   // the old "Sent from" id
 
@@ -330,12 +330,14 @@ test.describe('full feedback page', () => {
     await guard(context);
     const errors = trackErrors(page);
     await page.goto('/');
+    const before = await page.evaluate(() => history.length);
     await page.evaluate(() => { window.notReloaded = true; location.hash = '#feedback'; });
     await expect(page.locator('#fb')).toHaveAttribute('open', '');
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => window.notReloaded)).toBe(true);
     await expect(page.locator('#fb')).toHaveAttribute('open', '');
-    expect(new URL(page.url()).hash).toBe('');
+    expect(page.url()).toMatch(/\/$/);   // no "#feedback", and no bare "#" either
+    expect(await page.evaluate(() => history.length)).toBe(before + 1);   // the hash change only, so Back works once
     expect(errors).toEqual([]);
   });
 
