@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 
 const FORM_POST = /^https:\/\/docs\.google\.com\/forms\/.*\/formResponse/;
 const E = { trying: 'entry.413115414', happened: 'entry.667984208', screenshot: 'entry.991851856', email: 'entry.205670620', device: 'entry.1052076762', source: 'entry.566921339' };
@@ -312,6 +313,13 @@ test.describe('full feedback page', () => {
 
   test('a malformed address gets an error, and the local server keeps running', async ({ request }) => {
     expect((await request.get('/%')).status()).toBe(400);
+    // An address that can't be parsed at all, sent raw because browsers won't send it
+    const raw = await new Promise((ok, fail) => {
+      const port = Number(new URL(test.info().project.use.baseURL).port);
+      const s = connect(port, 'localhost', () => s.write('GET //[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'));
+      let out = ''; s.on('data', d => out += d); s.on('end', () => ok(out)); s.on('error', fail);
+    });
+    expect(raw).toMatch(/^HTTP\/1\.1 400/);
     expect((await request.get('/')).status()).toBe(200);
   });
 
