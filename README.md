@@ -14,6 +14,8 @@ The page has two addresses:
 
 Add `?from=<place>` to a `#feedback` link, or to `/feedback`, to record where it came from.
 
+**Try it:** every change merged to main is published to https://digitalcredentials.github.io/lcw-welcome/ (full feedback page: https://digitalcredentials.github.io/lcw-welcome/feedback?from=wallet). It's a preview for the team, kept out of search engines. Feedback sent from it goes to the real Google Forms, so start what you type with "TEST".
+
 ## Run it
 
 ```bash
@@ -40,7 +42,9 @@ The tests intercept every request to Google Forms, so they never send real feedb
 
 ## Deploy
 
-Run `npm run build` and upload `dist/` to the root of a static host. The host must serve `/feedback` (no trailing slash, since that's what the wallet links to) from `feedback/index.html`, either directly or by redirecting to `/feedback/` with the query string kept. Without the query string, feedback from the wallet isn't marked as coming from the wallet. Most static hosts do this already. CloudFront with an S3 origin doesn't: it needs a small function that rewrites `/feedback` and `/feedback/` to `/feedback/index.html`.
+Run `npm run build` and upload `dist/` to a static host, at the root or in a folder (all paths are relative). The host must serve `/feedback` (no trailing slash, since that's what the wallet links to) from `feedback/index.html`, either directly or by redirecting to `/feedback/` with the query string kept. Without the query string, feedback from the wallet isn't marked as coming from the wallet. Most static hosts do this already. CloudFront with an S3 origin doesn't: it needs a small function that rewrites `/feedback` and `/feedback/` to `/feedback/index.html`.
+
+The GitHub Pages preview is published by `.github/workflows/pages.yml`, which runs the tests first. GitHub Pages redirects `/feedback` to `/feedback/` and keeps the query string.
 
 ## Feedback forms
 

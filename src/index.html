@@ -6,7 +6,7 @@
 <!-- Kept out of search engines until launch (see README, "Before launch"). -->
 <meta name="robots" content="noindex">
 <title>Learner Credential Wallet Alpha</title>
-<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400..800;1,400&display=swap">
@@ -505,7 +505,7 @@ body.fbp-on .fbp-only{display:block}
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="#top">
-      <img src="/img/favicon.svg" alt="">
+      <img src="img/favicon.svg" alt="">
       <span class="brand-name"><span class="brand-line">Learner Credential Wallet <span class="alpha-badge">Alpha</span></span><span class="brand-stage">From Digital Credentials Commons</span></span>
     </a>
     <nav class="site-nav" aria-label="On this page">
@@ -548,7 +548,7 @@ body.fbp-on .fbp-only{display:block}
       <figure class="hero-fig" role="img" aria-label="Maya's wallet open on her credentials: a Certificate in Data Analysis and Spreadsheet Modeling from Riverbend Community College, and CPR and First Aid from Lakeview Safety Institute, all stored in her Portable Web Space, which belongs to her. The wallet opens it. Maya is an example.">
         <div class="ground" aria-hidden="true">
           <div class="wa">
-            <div class="wa-top"><span class="wa-dots"><i></i><i></i><i></i></span><img src="/img/favicon.svg" alt="">Learner Credential Wallet</div>
+            <div class="wa-top"><span class="wa-dots"><i></i><i></i><i></i></span><img src="img/favicon.svg" alt="">Learner Credential Wallet</div>
             <div class="wa-body">
               <div class="wa-h"><b>My Credentials</b><span class="wa-add">Add Credential</span></div>
               <div class="wa-grid">
@@ -691,7 +691,7 @@ body.fbp-on .fbp-only{display:block}
             <div class="access-left">
               <h3 class="access-h">Request early access</h3>
               <p>Sign up, and we'll email you your own code to set up your wallet and space. Once you're set up, you'll get the test badge below to try it with. If lots of people sign up at once, you may wait until we let the next group in.</p>
-              <div class="access-mini" role="img" aria-label="The test badge you'll get: LCW Alpha Testing Badge"><img src="/img/lcw-exp.png" alt="" width="56" height="56"><span aria-hidden="true"><span class="ab-kind">Your test badge</span><b class="ab-title">LCW Alpha Testing Badge</b><span class="ab-ok"><span>✓</span> Verified</span></span></div>
+              <div class="access-mini" role="img" aria-label="The test badge you'll get: LCW Alpha Testing Badge"><img src="img/lcw-exp.png" alt="" width="56" height="56"><span aria-hidden="true"><span class="ab-kind">Your test badge</span><b class="ab-title">LCW Alpha Testing Badge</b><span class="ab-ok"><span>✓</span> Verified</span></span></div>
             </div>
             <div class="access-right">
             <p class="access-err" id="access-err" role="alert" hidden></p>
@@ -909,7 +909,7 @@ body.fbp-on .fbp-only{display:block}
 <footer class="site-footer">
   <div class="wrap">
     <div class="foot-text">
-      <img src="/img/dcc-lockup-one-line.svg" alt="Digital Credentials Commons">
+      <img src="img/dcc-lockup-one-line.svg" alt="Digital Credentials Commons">
       <span>Learner Credential Wallet is made by Digital Credentials Commons, which is hosted by Strada Education Foundation.</span>
     </div>
     <nav aria-label="Footer">
@@ -1172,15 +1172,16 @@ var UPLOAD_FORM = {
   function param(){ var f=null; try { f=new URLSearchParams(location.search).get('from'); } catch(e){} return f; }
   function fromLink(){ return param()||'Link'; }
   /* Full page: the same form at its own address, /feedback. The build puts a copy of this page there,
-     so both places always match. The wallet's feedback button links to /feedback?from=wallet. */
+     marked with data-feedback-page, so both places always match and it works under any folder.
+     The wallet's feedback button links to /feedback?from=wallet. */
   var inner=dlg.querySelector('.fb-in'), slot=document.getElementById('fbp-slot');
-  var onPage=/^\/feedback(\/(index\.html)?)?$/.test(location.pathname);
+  var onPage=document.documentElement.hasAttribute('data-feedback-page');
   if(onPage){
     slot.appendChild(inner); document.body.classList.add('fbp-on');
     fbH.setAttribute('role','heading'); fbH.setAttribute('aria-level','1');
     source='Feedback page'+(param()?': '+param():'');
     document.title='Share feedback · '+document.title;
-    document.querySelector('.site-header .brand').setAttribute('href','/');   // the logo goes back to the welcome page
+    document.querySelector('.site-header .brand').setAttribute('href','../');   // the logo goes back to the welcome page, one folder up
     fbH.focus({preventScroll:true});
   }
   function byHash(){
