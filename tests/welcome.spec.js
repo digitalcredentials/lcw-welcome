@@ -155,7 +155,7 @@ test.describe('feedback pop-up', () => {
       expect(posts[0].get(E.happened)).toBe('TEST ONLY: badge email never arrived.');
       expect(posts[0].get(E.screenshot)).toBe(`On the upload form, reference ${ref}`);
       expect(posts[0].get(E.source)).toBe('Link');
-      expect(posts[0].get(E.device)).toContain('Chrome');
+      expect(posts[0].get(E.device)).toMatch(/^(Chrome|Safari|Firefox) on .+ \| Mozilla\/5\.0 /);
       expect(posts[0].has(E.email)).toBe(false);
       expect(posts[0].has('entry.1730067921')).toBe(false);   // the old "Sent from" id
 
@@ -323,6 +323,19 @@ test.describe('full feedback page', () => {
     await page.evaluate(() => { location.hash = '#feedback'; });
     await expect(page.locator('#fb')).not.toHaveAttribute('open', '');
     await expect(page.locator('#fb-h')).toBeFocused();
+    expect(errors).toEqual([]);
+  });
+
+  test('#feedback added while the welcome page is open opens the pop-up without reloading', async ({ page, context }) => {
+    await guard(context);
+    const errors = trackErrors(page);
+    await page.goto('/');
+    await page.evaluate(() => { window.notReloaded = true; location.hash = '#feedback'; });
+    await expect(page.locator('#fb')).toHaveAttribute('open', '');
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.notReloaded)).toBe(true);
+    await expect(page.locator('#fb')).toHaveAttribute('open', '');
+    expect(new URL(page.url()).hash).toBe('');
     expect(errors).toEqual([]);
   });
 
