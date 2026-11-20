@@ -37,5 +37,5 @@ Where Legal's wording comes from is tracked in [#1](https://github.com/digitalcr
 | `vendors-when` | Get involved, "Vendors and issuers" | in spring | Confirming when vendor testing starts |
 | `vendors-how` | Get involved, "Vendors and issuers" | How to take part, to come. | How vendors and issuers take part |
 | `partners-how` | Get involved, "Schools and community organizations" | How partners can take part, to come. | How partners take part |
-| `repo-list` | Go deeper, "The code" | The list of eight repositories | James to check the list. Not listed, for him to decide: batch-issuer-ui (moving out of the wallet in [lcw-front-end#193](https://github.com/digitalcredentials/lcw-front-end/issues/193)), lcw-admin-front-end and lcw-admin-back-end. Don't add "MIT licensed" until the license pull requests are merged. |
+| `repo-list` | Go deeper, "The code" | The list of eight repositories, "all public on GitHub and MIT licensed" | James to check the list. Not listed, for him to decide: batch-issuer-ui (moving out of the wallet in [lcw-front-end#193](https://github.com/digitalcredentials/lcw-front-end/issues/193)), lcw-admin-front-end and lcw-admin-back-end. |
 | `standards-link` | Go deeper, "Interoperability standards" | Describes a list of standards but doesn't link to one | dccommons.org/standards, then a link to it |
