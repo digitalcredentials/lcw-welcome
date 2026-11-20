@@ -60,6 +60,7 @@ Screenshots go on a separate Google Form (`UPLOAD_FORM`), because a form with an
 
 - [ ] `PLACEHOLDERS.md` is empty, and no `data-ph` markers are left in `src/index.html`.
 - [ ] Remove the `noindex` meta tag from `src/index.html`, and remove `src/robots.txt`.
+- [ ] Take down the GitHub Pages preview once the page is live at its real address (#9).
 - [ ] Sign-up sends for real. For now it's a mock-up that sends nothing (#3, #4).
 - [ ] One test feedback, sent from the live address, arrives in the form's responses (then delete it).
 
