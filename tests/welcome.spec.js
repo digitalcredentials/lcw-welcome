@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 
 const FORM_POST = /^https:\/\/docs\.google\.com\/forms\/.*\/formResponse/;
 const E = { trying: 'entry.413115414', happened: 'entry.667984208', screenshot: 'entry.991851856', email: 'entry.205670620', device: 'entry.1052076762', source: 'entry.566921339' };
@@ -351,5 +352,52 @@ test.describe('full feedback page', () => {
     await page.goForward();
     await expect(page.locator('body')).toHaveClass(/fbp-on/);
     await expect(page.locator('#fbp-slot #fb-form')).toBeVisible();
+  });
+});
+
+// GitHub Pages serves this repo's site in a folder (/lcw-welcome/), not at the root of the host.
+test.describe('served in a folder, as on GitHub Pages', () => {
+  const PORT = 4318, BASE = '/lcw-welcome/', ROOT = `http://localhost:${PORT}`;
+  let server;
+  test.beforeAll(async () => {
+    server = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: String(PORT), BASE }, stdio: ['ignore', 'pipe', 'inherit'] });
+    await new Promise((ok, fail) => { server.stdout.once('data', ok); server.once('exit', fail); });
+  });
+  test.afterAll(() => server?.kill());
+
+  const imagesLoaded = page => page.evaluate(() => [...document.images].every(i => i.complete && i.naturalWidth > 0));
+  const iconLoads = page => page.evaluate(async () => (await fetch(document.querySelector('link[rel=icon]').href)).ok);
+
+  test('the welcome page loads its images and icon', async ({ page, context }) => {
+    await guard(context);
+    const errors = trackErrors(page);
+    await page.goto(ROOT + '/lcw-welcome');
+    await expect(page).toHaveURL(ROOT + BASE);
+    await expect(page.locator('.hero')).toBeVisible();
+    await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
+    await page.waitForLoadState('load');
+    expect(await imagesLoaded(page)).toBe(true);
+    expect(await iconLoads(page)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('/feedback?from=wallet is the full page, sends from the wallet, and the logo goes back', async ({ page, context }) => {
+    const { posts } = await guard(context);
+    const errors = trackErrors(page);
+    await page.goto(ROOT + BASE + 'feedback?from=wallet');
+    await expect(page).toHaveURL(ROOT + BASE + 'feedback/?from=wallet');
+    await expect(page.locator('body')).toHaveClass(/fbp-on/);
+    await page.waitForLoadState('load');
+    expect(await imagesLoaded(page)).toBe(true);
+    expect(await iconLoads(page)).toBe(true);
+    await page.check('input[name=trying][value="Get the test badge"]');
+    await page.fill('#fb-happened', 'TEST ONLY: in a folder.');
+    await page.click('#fb-send');
+    await expect(page.locator('#fb-done')).toBeVisible();
+    expect(posts[0].get(E.source)).toBe('Feedback page: wallet');
+    await page.click('.site-header .brand');
+    await expect(page).toHaveURL(ROOT + BASE);
+    await expect(page.locator('.hero')).toBeVisible();
+    expect(errors).toEqual([]);
   });
 });
