@@ -365,11 +365,13 @@ test.describe('full feedback page', () => {
 
 // GitHub Pages serves this repo's site in a folder (/lcw-welcome/), not at the root of the host.
 test.describe('served in a folder, as on GitHub Pages', () => {
-  const PORT = 4318, BASE = '/lcw-welcome/', ROOT = `http://localhost:${PORT}`;
-  let server;
+  const BASE = '/lcw-welcome/';
+  let server, ROOT;
+  // PORT=0: the server takes any free port and prints its address, so parallel copies of these tests
+  // (as with --repeat-each) each get their own server instead of colliding on one port.
   test.beforeAll(async () => {
-    server = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: String(PORT), BASE }, stdio: ['ignore', 'pipe', 'inherit'] });
-    await new Promise((ok, fail) => { server.stdout.once('data', ok); server.once('exit', fail); });
+    server = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: '0', BASE }, stdio: ['ignore', 'pipe', 'inherit'] });
+    ROOT = await new Promise((ok, fail) => { server.stdout.once('data', d => ok(String(d).trim())); server.once('exit', fail); });
   });
   test.afterAll(() => server?.kill());
 
