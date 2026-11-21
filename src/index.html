@@ -446,6 +446,7 @@ body.fbp-on .fbp-only{display:block}
 .fb .fb-up{align-self:flex-start;margin-top:4px}
 .fb-opened{margin:4px 0 0}
 .fb-opened[hidden]{display:none}
+#fb-ref{white-space:nowrap}  /* keep FB-XXXXXX in one piece, so it reads and copies as one code */
 .fb-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .fb-status{font-size:.9375rem;margin:0}
 .fb-status.err,.fb-status-err{color:#8A2626;font-weight:600}
@@ -782,6 +783,30 @@ body.fbp-on .fbp-only{display:block}
               <p>The wallet is built for credentials that follow open standards: <a href="https://www.w3.org/TR/vc-data-model-2.0/" target="_blank" rel="noopener">W3C Verifiable Credentials</a>, including <a href="https://www.imsglobal.org/spec/ob/v3p0/" target="_blank" rel="noopener">Open Badges 3.0</a>.</p>
             </div>
           </details>
+          <details class="qa" id="faq-choose">
+            <summary><span class="qa-q">Why am I asked to allow the wallet, and then to choose a wallet when I claim my badge?</span></summary>
+            <div class="qa-a">
+              <p>They're two different steps. Allowing happens once: it adds Learner Credential Wallet to your browser's list of wallets. Choosing happens each time a website offers you a credential, so you decide which wallet takes it. When you claim your test badge, choose Learner Credential Wallet.</p>
+            </div>
+          </details>
+          <details class="qa" id="faq-approve">
+            <summary><span class="qa-q">Why does the wallet ask me to sign in again when I save a credential?</span></summary>
+            <div class="qa-a">
+              <p><span data-ph="faq-approve">When a website sends you a credential, the wallet asks you to confirm it's you before saving it, even if you're already signed in. That way, no one else can add credentials to a wallet you've left open. The box says "Sign in to continue," but you haven't been signed out.</span></p>
+            </div>
+          </details>
+          <details class="qa" id="faq-claimed">
+            <summary><span class="qa-q">Why doesn't the claim page take me to my wallet afterward?</span></summary>
+            <div class="qa-a">
+              <p><span data-ph="faq-claimed">The claim page doesn't know which wallet you chose, so it can't send you there. Once it says your badge is claimed, open your wallet to see it.</span></p>
+            </div>
+          </details>
+          <details class="qa" id="faq-json">
+            <summary><span class="qa-q">What's the "Credential JSON" box in Add Credential for?</span></summary>
+            <div class="qa-a">
+              <p>A credential is a block of text in a format called JSON. When you choose a file, drag one in or scan a QR code, the wallet shows that text in the box, so you can check it before adding it. If someone gave you the text instead of a file, paste it there. <span data-ph="faq-json">Don't edit it: a credential is signed, so any change means it won't show as verified.</span></p>
+            </div>
+          </details>
           <details class="qa" id="faq-copy">
             <summary><span class="qa-q">Can I keep a copy of my credentials?</span></summary>
             <div class="qa-a">
@@ -949,7 +974,7 @@ body.fbp-on .fbp-only{display:block}
       <div class="fb-field">
         <span class="fb-label">Screenshots <span class="fb-hint" style="display:inline">(optional)</span><span class="fb-hint" id="fb-up-hint">Add them on a separate Google form. It opens in a new tab. You'll need to sign in with a Google account, and Google shares that account's name and email with us.</span><span class="fb-hint fb-priv" id="fb-up-priv"><span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></span></span>
         <a class="btn btn-secondary fb-up" id="fb-up" href="https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform" target="_blank" rel="noopener" aria-describedby="fb-up-hint fb-up-priv">Add screenshots</a>
-        <p class="fine fb-opened" id="fb-opened" role="status" hidden>Opened in a new tab. When you've added them, come back here and press Send feedback.</p>
+        <p class="fine fb-opened" id="fb-opened" role="status" hidden>Opened in a new tab. Your reference is <b id="fb-ref"></b>. If the form's "Feedback reference" box is empty, type it in there. When you've added your screenshots, come back here and press Send feedback.</p>
       </div>
       <div class="fb-field">
         <label class="fb-label" for="fb-email">Your email, if we can follow up <span class="fb-hint" style="display:inline">(optional)</span></label>
@@ -1149,7 +1174,7 @@ var UPLOAD_FORM = {
   function newRef(){ var c='23456789ABCDEFGHJKMNPQRSTUVWXYZ', a=new Uint32Array(6), r='FB-';
     try { crypto.getRandomValues(a); } catch(e){ for(var i=0;i<6;i++) a[i]=Math.floor(Math.random()*1e9); }
     for(var j=0;j<6;j++) r+=c[a[j]%c.length];
-    ref=r; upOpened=false; opened.hidden=true;
+    ref=r; upOpened=false; opened.hidden=true; document.getElementById('fb-ref').textContent=ref;   // shown after Add screenshots, in case the upload form drops the pre-filled reference
     up.href=UPLOAD_FORM.url+(UPLOAD_FORM.reference ? '?usp=pp_url&'+UPLOAD_FORM.reference+'='+encodeURIComponent(ref) : ''); }
   newRef();
   up.addEventListener('click', function(){ upOpened=true; opened.hidden=false; });

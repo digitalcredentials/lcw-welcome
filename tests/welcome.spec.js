@@ -86,6 +86,15 @@ test.describe('welcome page', () => {
     await expect(page.locator('#faq-passkey summary')).toBeInViewport();
   });
 
+  test('every FAQ answer has an id a #faq-<question> link can open', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/');
+    const ids = await page.locator('#faq details.qa').evaluateAll(ds => ds.map(d => d.id));
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) expect(id, 'only letters after faq-, or the link handler ignores it').toMatch(/^faq-[a-z]+$/);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   test('the comparison steps through and starts over', async ({ page, context }) => {
     await guard(context);
     await page.goto('/');
@@ -146,6 +155,7 @@ test.describe('feedback pop-up', () => {
       await expect(page.locator('#fb-opened')).toBeHidden();
       expect(await openUpload(context, page)).toContain(`${UPLOAD_REF}=${ref}`);
       await expect(page.locator('#fb-opened')).toBeVisible();
+      await expect(page.locator('#fb-ref')).toHaveText(ref);   // shown too, in case the upload form drops it
       expect(await page.evaluate(() => { const d = document.getElementById('fb'); return d.scrollWidth - d.clientWidth; })).toBeLessThanOrEqual(0);
 
       await page.click('#fb-send');
@@ -165,6 +175,7 @@ test.describe('feedback pop-up', () => {
       await page.click('#fb-again');
       const ref2 = new URL(await page.getAttribute('#fb-up', 'href')).searchParams.get(UPLOAD_REF);
       expect(ref2).not.toBe(ref);
+      await expect(page.locator('#fb-ref')).toHaveText(ref2);
       await expect(page.locator('#fb-opened')).toBeHidden();
       await page.check('input[name=trying][value="Share it"]');
       await page.fill('#fb-happened', 'TEST ONLY: no screenshots this time.');
