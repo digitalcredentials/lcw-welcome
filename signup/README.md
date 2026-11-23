@@ -29,6 +29,7 @@ No CAPTCHA unless misuse shows up.
 Two limits to know about:
 
 - **The whole-API limit is shared.** A script sending more than 10 requests a second slows sign-up for everyone while it runs. AWS WAF can't be attached to an HTTP API, so the fix, if it happens, is a REST API with WAF rate rules, or a CAPTCHA.
+- **A code can be made but never sent.** If lcw-back-end makes a code but its answer is lost (a timeout, say), the next try makes another. The first is never sent to anyone and is 16 random characters, so it can't be used in practice; it just sits unused in the coupons table. lcw-back-end could stop this by answering the same code for the same `issuedTo`.
 - **The per-network count is kept as an unsalted hash, for 2 hours** (DynamoDB deletes it after that). The hash hides the address at a glance, but someone who can read the table could work an IPv4 address out from it.
 
 ## What's where

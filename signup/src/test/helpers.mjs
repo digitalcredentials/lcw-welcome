@@ -7,10 +7,15 @@ export function memoryStore() {
     return {
         signups, counters,
         async getSignup(email) { return copy(signups.get(email)); },
-        async createSignup({ email, name, organization, signedUpAt, autoInvite }) {
+        async createSignup({ email, name, organization, signedUpAt }) {
             if (signups.has(email)) return false;
-            signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }), ...(autoInvite && { autoInvite: 1 }) });
+            signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }) });
             return true;
+        },
+        async markAutoInvite(email) {
+            const row = signups.get(email);
+            if (!row) throw new Error("ConditionalCheckFailed");
+            row.autoInvite = 1;
         },
         async claim(email, at, staleBefore) {
             const row = signups.get(email);

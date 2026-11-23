@@ -159,6 +159,17 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("releasing an invited row does nothing", (await t.store.getSignup("p1@example.org")).status === "invited");
 }
 
+// --- Recording a first-N place needs the row to be there
+{
+    const t = await setup("mark", { autoInviteLimit: 0 });
+    await t.service.signUp(person(1), "10.0.6.1");
+    await t.store.markAutoInvite("p1@example.org");
+    check("markAutoInvite records the place", (await t.store.getSignup("p1@example.org")).autoInvite === 1);
+    let refused = false;
+    try { await t.store.markAutoInvite("nobody@example.org"); } catch (e) { refused = e.name === "ConditionalCheckFailedException"; }
+    check("...and is refused for an address that hasn't signed up (no row made)", refused && (await t.store.getSignup("nobody@example.org")) === null);
+}
+
 // --- Undoing a re-send's time
 {
     const t = await setup("unmark", { autoInviteLimit: 1 });
@@ -175,7 +186,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("with no old time, it removes it", (await t.store.getSignup("p1@example.org")).lastEmailedAt === undefined);
 }
 
-for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark"]) {
+for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark", "mark"]) {
     for (const name of [`signups-${suffix}`, `counters-${suffix}`]) await client.send(new DeleteTableCommand({ TableName: name }));
 }
 done();

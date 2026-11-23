@@ -65,17 +65,27 @@ export function dynamoStore({
         },
 
         // Adds a queued sign-up; false if the address has already signed up
-        async createSignup({ email, name, organization, signedUpAt, autoInvite }) {
+        async createSignup({ email, name, organization, signedUpAt }) {
             const done = await conditional(client, new PutItemCommand({
                 TableName: signupsTable,
                 Item: {
                     email: S(email), name: S(name), signedUpAt: S(signedUpAt), status: S("queued"),
-                    ...(organization && { organization: S(organization) }),
-                    ...(autoInvite && { autoInvite: N(1) })
+                    ...(organization && { organization: S(organization) })
                 },
                 ConditionExpression: "attribute_not_exists(email)"
             }));
             return done !== false;
+        },
+
+        // Records that a sign-up has one of the first-N places
+        async markAutoInvite(email) {
+            await client.send(new UpdateItemCommand({
+                TableName: signupsTable,
+                Key: key(email),
+                UpdateExpression: "SET autoInvite = :one",
+                ConditionExpression: "attribute_exists(email)",
+                ExpressionAttributeValues: { ":one": N(1) }
+            }));
         },
 
         // Moves a sign-up that's queued, or stuck "inviting" since before

@@ -266,6 +266,41 @@ for (const what of ["mintCode", "sendEmail"]) {
     check("signing up again doesn't take another first-N place", t.store.counters.get("auto-invites") === 1);
 }
 
+// --- Only a new sign-up takes a first-N place, so someone signing up again can't take one from a new person
+{
+    const t = setup({ autoInviteLimit: 2 });
+    await t.signUp(person(1));
+    const takes = [];
+    const take = t.store.take;
+    t.store.take = async (counter, ...rest) => { takes.push(counter); return take(counter, ...rest); };
+    await t.signUp(person(1));
+    t.clock.advance(2 * HOUR);
+    await t.signUp(person(1));
+    check("signing up again never touches the first-N count", !takes.includes("auto-invites"), takes);
+}
+{
+    const t = setup({ autoInviteLimit: 2 });
+    t.store.createSignup = async () => { throw new Error("throttled"); };
+    let threw = false;
+    try { await t.signUp(person(1)); } catch { threw = true; }
+    check("if making the row fails, no first-N place is used", threw && !t.store.counters.has("auto-invites"));
+}
+{
+    const t = setup({ autoInviteLimit: 2 });
+    t.store.markAutoInvite = async () => { throw new Error("throttled"); };
+    let threw = false;
+    try { await t.signUp(person(1)); } catch { threw = true; }
+    check("if recording the place fails, the place is given back and nothing is sent", threw && t.store.counters.get("auto-invites") === 0 && t.sendEmail.sent.length === 0);
+}
+{
+    const t = setup();
+    const saveCode = t.store.saveCode;
+    t.store.saveCode = async () => { throw new Error("ConditionalCheckFailed"); };
+    await t.signUp(person(1));
+    check("if keeping the code fails, the log names that step, and nothing is sent", t.log.lines.some((l) => l.includes("INVITE_FAILED for a sign-up (keeping the code on the row)")) && t.sendEmail.sent.length === 0);
+    t.store.saveCode = saveCode;
+}
+
 // --- A re-send that doesn't go out doesn't block trying again
 {
     const t = setup({ autoInviteLimit: 5, dailyEmailCap: 2 });
@@ -287,6 +322,16 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.clock.advance(60_000);
     await t.signUp(person(2));
     check("...a minute later, trying again sends it", t.sendEmail.sent.at(-1).to === "p2@example.org" && t.sendEmail.sent.length === 4);
+}
+{
+    const t = setup({ autoInviteLimit: 1 });
+    await t.signUp(person(1));
+    t.sendEmail.fail = true;
+    t.store.giveBack = async () => { throw new Error("throttled"); };
+    t.clock.advance(2 * HOUR);
+    const answer = await t.signUp(person(1));
+    check("a failed re-send is undone even if giving back today's email fails, and the form still gets 202",
+        answer.status === 202 && t.store.signups.get("p1@example.org").lastEmailedAt === "2026-12-15T15:00:00.001Z" && t.log.lines.some((l) => l.includes("Couldn't give back")));
 }
 
 // --- An invite taken over after it went stale can't be undone or finished by the slow one

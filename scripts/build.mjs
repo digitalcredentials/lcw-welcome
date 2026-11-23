@@ -8,7 +8,8 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 // SIGNUP_API is where the sign-up form posts (the sign-up service's SignupUrl output). Without it, the
 // form is a mock-up that sends nothing, as on the GitHub Pages preview.
 const META = '<meta name="lcw-signup-api" content="">';
-const api = process.env.SIGNUP_API ?? '';
+// --no-signup-api (npm test) ignores a SIGNUP_API left in the shell, so tests never post to a real service
+const api = process.argv.includes('--no-signup-api') ? '' : process.env.SIGNUP_API ?? '';
 if (api && !/^https:\/\/[^\s"<>]+$/.test(api)) throw new Error('build: SIGNUP_API must be an https:// address');
 const source = await readFile('src/index.html', 'utf8');
 if (!source.includes(META)) throw new Error('build: could not find the lcw-signup-api meta tag');

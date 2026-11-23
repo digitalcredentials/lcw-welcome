@@ -709,7 +709,7 @@ body.fbp-on .fbp-only{display:block}
               <input type="email" id="access-email" name="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" maxlength="254" required>
               <button type="submit" class="btn btn-primary">Request early access</button>
             </div>
-            <div class="access-hp" aria-hidden="true"><label for="access-website">Leave this empty</label><input type="text" id="access-website" name="website" tabindex="-1" autocomplete="off"></div>
+            <div class="access-hp" aria-hidden="true"><label for="access-hp-x">Leave this empty</label><input type="text" id="access-hp-x" name="hp-x" tabindex="-1" autocomplete="off"></div>
             <span id="access-msg-limit" hidden data-ph="signup-too-many">Too many sign-ups from your network. Please try again in an hour.</span>
             <span id="access-msg-failed" hidden data-ph="signup-failed">We couldn't sign you up just now. Please try again in a few minutes.</span>
             <p class="fine"><span data-ph="signup-privacy">We use your name, email and organization only to run and improve the alpha. See the privacy notice.</span></p>
@@ -1111,7 +1111,7 @@ var LCW_START_HASH = location.hash;
       err=document.getElementById('access-err'), done=document.getElementById('access-done'),
       to=document.getElementById('access-to'), doneH=document.getElementById('access-done-h'),
       again=document.getElementById('access-again'), orgIn=document.getElementById('access-org'),
-      trap=document.getElementById('access-website'), submit=form.querySelector('button[type=submit]'),
+      trap=document.getElementById('access-hp-x') /* the honeypot; named so browsers' autofill doesn't recognise it */, submit=form.querySelector('button[type=submit]'),
       api=(document.querySelector('meta[name="lcw-signup-api"]')||{}).content||'';
   var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   function showErr(msg){ err.textContent=msg; err.hidden=false; input.setAttribute('aria-invalid','true'); input.setAttribute('aria-describedby','access-err'); input.focus(); }

@@ -93,14 +93,18 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             return "cap";
         }
         let codes = row.code ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
+        let step = "making the code";
         try {
             if (!codes) {
-                codes = await mintCode(email);
-                await store.saveCode(email, codes, claimedAt);
+                const made = await mintCode(email);
+                step = "keeping the code on the row";   // if this fails, that code is never sent to anyone
+                await store.saveCode(email, made, claimedAt);
+                codes = made;
             }
+            step = "sending the email";
             await sendEmail({ to: email, ...inviteEmail(codes) });
         } catch (error) {
-            log.error(`INVITE_FAILED for a sign-up (${codes ? "sending the email" : "making the code"}):`, error?.message ?? error);
+            log.error(`INVITE_FAILED for a sign-up (${step}):`, error?.message ?? error);
             await putBack(email, now, claimedAt, { emailTaken: true });
             return "failed";
         }
@@ -140,14 +144,20 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             return { status: 429, body: { error: "Too many sign-ups from your network. Try again later.", reason: "ip-hourly-limit" } };
         }
 
-        // A first-N place is taken before the row is made, so the row records it
-        const autoInvite = await store.take("auto-invites", config.autoInviteLimit);
-        if (await store.createSignup({ email, name, organization, signedUpAt: now.toISOString(), autoInvite })) {
-            // If this invite fails, they keep the place and stay first in the queue (see the top of this file)
-            if (autoInvite) await inviteOne(email);
+        if (await store.createSignup({ email, name, organization, signedUpAt: now.toISOString() })) {
+            // Only a new sign-up takes a first-N place. The row records it before the invite, so if the
+            // invite fails they keep the place and stay first in the queue (see the top of this file).
+            if (await store.take("auto-invites", config.autoInviteLimit)) {
+                try {
+                    await store.markAutoInvite(email);
+                } catch (error) {
+                    await store.giveBack("auto-invites").catch(() => {});
+                    throw error;
+                }
+                await inviteOne(email);
+            }
             return ok;
         }
-        if (autoInvite) await store.giveBack("auto-invites");   // signed up before, so not a new place
 
         // Signed up before: finish an invite they're owed (one of the first N whose
         // invite failed, or one that got stuck), or re-send their code if they've been invited
@@ -169,8 +179,8 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             await sendEmail({ to: email, ...inviteEmail(row) });
         } catch (error) {
             log.error("INVITE_FAILED re-sending an invite:", error?.message ?? error);
-            await store.giveBack(`emails#${day(now)}`);
             await undo();
+            await store.giveBack(`emails#${day(now)}`).catch((e) => log.error("Couldn't give back today's email:", e?.message ?? e));
         }
         return ok;
     }

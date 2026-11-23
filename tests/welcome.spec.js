@@ -187,6 +187,13 @@ test.describe('sign-up, sending to the sign-up service', () => {
     for (const file of ['dist/index.html', 'dist/feedback/index.html']) {
       expect(await readFile(join(dir, file), 'utf8')).toContain(`<meta name="lcw-signup-api" content="${SIGNUP_API}">`);
     }
+    // --no-signup-api (what npm test uses) leaves the form a mock-up, whatever SIGNUP_API says
+    const mock = await new Promise(resolve => {
+      const child = spawn(process.execPath, ['scripts/build.mjs', '--no-signup-api'], { cwd: dir, env: { ...process.env, SIGNUP_API: SIGNUP_API } });
+      child.on('close', resolve);
+    });
+    expect(mock).toBe(0);
+    expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<meta name="lcw-signup-api" content="">');
     // A $ or & in the address comes through as written ($& would otherwise be read as a replacement pattern)
     expect((await build({ SIGNUP_API: 'https://x.example/signup?a=$&b=1' })).code).toBe(0);
     expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<meta name="lcw-signup-api" content="https://x.example/signup?a=$&amp;b=1">');
@@ -291,17 +298,20 @@ test.describe('sign-up, sending to the sign-up service', () => {
     const sent = await withSignupApi(page, () => ({ status: 202 }));
     await page.goto('/');
     await expect(page.locator('.access-hp')).toHaveAttribute('aria-hidden', 'true');
-    await expect(page.locator('#access-website')).toHaveAttribute('tabindex', '-1');
-    const box = await page.locator('#access-website').boundingBox();
+    await expect(page.locator('#access-hp-x')).toHaveAttribute('tabindex', '-1');
+    // Named so autofill doesn't take it for a field it knows (a real person's sign-up would be thrown away)
+    const hp = await page.locator('#access-hp-x').evaluate(el => [el.name, el.id, el.autocomplete, el.labels[0].textContent].join(' '));
+    expect(hp).not.toMatch(/web|url|site|name|mail|phone|tel|fax|address|company|org/i);
+    const box = await page.locator('#access-hp-x').boundingBox();
     expect(box === null || box.x + box.width <= 0).toBe(true);
     // Tabbing on from the email field never lands on it (WebKit, like Safari, also skips the button)
     await page.focus('#access-email');
     const reached = [];
     for (let i = 0; i < 3; i++) { await page.keyboard.press('Tab'); reached.push(await page.evaluate(() => document.activeElement.id)); }
-    expect(reached).not.toContain('access-website');
+    expect(reached).not.toContain('access-hp-x');
     // A bot that fills it in: the page sends it as it is, and the service ignores the sign-up
     await fillSignup(page);
-    await page.evaluate(() => { document.getElementById('access-website').value = 'http://spam.example'; });
+    await page.evaluate(() => { document.getElementById('access-hp-x').value = 'http://spam.example'; });
     await page.click('#access-form button[type=submit]');
     await expect(page.locator('#access-done')).toBeVisible();
     expect(sent[0].body.website).toBe('http://spam.example');
