@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "node test/service-test.mjs && node test/clients-test.mjs",
-    "test:dynamodb": "node test/dynamodb-test.mjs"
+    "test:dynamodb": "node test/dynamodb-test.mjs",
+    "smoke": "node test/smoke.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.1127.0",

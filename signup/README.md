@@ -52,6 +52,15 @@ docker stop lcw-welcome-ddb
 
 The page's side is tested with the rest of the page (`npm test` at the top of the repo).
 
+### Smoke test: click through it
+
+`npm run smoke` (in `signup/src`, with Docker running) runs the page and the real `signup.mjs` and `invite.mjs` handlers on your computer, with DynamoDB Local in Docker. Parameter Store, `POST /registration-codes` and SES are stood in for on `127.0.0.1:4601`, with made-up credentials, so nothing can reach real AWS and no email is sent.
+
+- **The page:** http://localhost:4600. Sign up as you would.
+- **The control panel:** http://localhost:4600/_smoke. It shows the table, every email SES was asked to send (open one to see it as it would arrive), and the log, with the lines that alert the team in red. Its buttons run "invite the next N" (and its dry run), make code-making fail, take the sign-up API down, and reset everything.
+
+Its settings are small, so each rule shows up within a few sign-ups: 2 invited straight away, 6 emails a day, 8 sign-ups an hour from one network, and a re-send after 1 minute. Each can be changed, for example `AUTO_INVITE_LIMIT=5 npm run smoke`. Ctrl+C stops it and removes its Docker container.
+
 ## Deploy
 
 Before the first deploy:
