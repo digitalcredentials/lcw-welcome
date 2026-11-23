@@ -42,3 +42,9 @@ Where Legal's wording comes from is tracked in [#1](https://github.com/digitalcr
 | `partners-how` | Get involved, "Schools and community organizations" | How partners can take part, to come. | How partners take part |
 | `repo-list` | Go deeper, "The code" | The list of eight repositories, "all public on GitHub and MIT licensed" | James to check the list. Not listed, for him to decide: batch-issuer-ui (moving out of the wallet in [lcw-front-end#193](https://github.com/digitalcredentials/lcw-front-end/issues/193)), lcw-admin-front-end and lcw-admin-back-end. |
 | `standards-link` | Go deeper, "Interoperability standards" | Describes a list of standards but doesn't link to one | dccommons.org/standards, then a link to it |
+| `signup-too-many` | Try it, sign-up form, when one network has sent too many sign-ups in an hour | Too many sign-ups from your network. Please try again in an hour. | Signing off the wording, then adding it to the prototype |
+| `signup-failed` | Try it, sign-up form, when the sign-up service fails or can't be reached | We couldn't sign you up just now. Please try again in a few minutes. | Signing off the wording, then adding it to the prototype |
+
+## Not on the page
+
+- **The invite email** (`signup/src/email.mjs`): its subject and wording are a draft, waiting on sign-off.

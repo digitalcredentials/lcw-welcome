@@ -1,0 +1,17 @@
+{
+  "name": "lcw-welcome-signup",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/service-test.mjs && node test/clients-test.mjs",
+    "test:dynamodb": "node test/dynamodb-test.mjs"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1127.0",
+    "@aws-sdk/client-sesv2": "^3.1127.0",
+    "@aws-sdk/client-ssm": "^3.1127.0",
+    "aws-sdk-client-mock": "^4.1.0"
+  }
+}

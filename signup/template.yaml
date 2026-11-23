@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  lcw-welcome sign-up: the welcome page's early-access form. It keeps the
+  sign-ups and the queue, invites the first 100 straight away, and emails each
+  invite with a code from lcw-back-end's POST /registration-codes. Deployed to
+  the same AWS account as lcw-back-end. See signup/README.md.
+
+Parameters:
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Description: The addresses the welcome page is served from, which are the only pages allowed to call POST /signup (CORS). No trailing slash.
+    Default: https://welcome.alpha.lcw.app
+  RegistrationCodesUrl:
+    Type: String
+    Description: lcw-back-end's POST /registration-codes (its RegistrationCodesUrl output).
+    Default: https://api.lcw-sandbox.org/registration-codes
+  RegistrationCodeApiKeyParameter:
+    Type: String
+    Description: The Parameter Store SecureString holding the API key for POST /registration-codes (the same parameter lcw-back-end checks the key against, in the same account).
+    Default: /lcw/registration-codes/api-key
+  FromEmail:
+    Type: String
+    Description: The address invites are sent from. Its domain must be verified in SES in this account.
+    Default: support@lcw.app
+  SesIdentity:
+    Type: String
+    Description: The SES identity (the domain) that FromEmail belongs to.
+    Default: lcw.app
+  AutoInviteLimit:
+    Type: Number
+    Description: How many sign-ups are invited straight away. Everyone after waits for "invite the next N".
+    Default: 100
+  DailyEmailCap:
+    Type: Number
+    Description: The most invite emails sent in one day (UTC). Reaching it alerts AlertEmail.
+    Default: 300
+  IpHourlyLimit:
+    Type: Number
+    Description: The most sign-ups accepted from one IP address in one hour.
+    Default: 10
+  AlertEmail:
+    Type: String
+    Description: Who is emailed when the daily cap is reached or an invite fails. Confirm the subscription email AWS sends after the first deploy.
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures:
+      - x86_64
+    MemorySize: 128
+    CodeUri: src/
+    Environment:
+      Variables:
+        SIGNUPS_TABLE_NAME: !Ref SignupsTable
+        COUNTERS_TABLE_NAME: !Ref CountersTable
+        REGISTRATION_CODES_URL: !Ref RegistrationCodesUrl
+        API_KEY_PARAMETER: !Ref RegistrationCodeApiKeyParameter
+        FROM_EMAIL: !Ref FromEmail
+        AUTO_INVITE_LIMIT: !Ref AutoInviteLimit
+        DAILY_EMAIL_CAP: !Ref DailyEmailCap
+        IP_HOURLY_LIMIT: !Ref IpHourlyLimit
+
+Resources:
+  SignupHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: lcw-welcome-signup
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods:
+          - POST
+        AllowHeaders:
+          - content-type
+        MaxAge: 600
+      # A ceiling on the whole API, on top of the per-IP limit in the function
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  SignupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: lcw-welcome-signup
+      Description: The welcome page's sign-up form (POST /signup)
+      Handler: signup.handler
+      # Long enough to make a code and send an email for one sign-up
+      Timeout: 20
+      LoggingConfig:
+        LogGroup: !Ref SignupFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SignupsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CountersTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RegistrationCodeApiKeyParameter}
+            # The domain, and the address itself in case it's also verified on its own (SES then checks that one)
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesIdentity}
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}
+      Events:
+        SignupRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SignupHttpApi
+            Method: POST
+            Path: /signup
+
+  SignupFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/lcw-welcome-signup
+      RetentionInDays: 30
+
+  # "Invite the next N". No route: the admin console invokes it directly.
+  InviteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: lcw-welcome-invite
+      Description: Invites the next N queued sign-ups, in sign-up order
+      Handler: invite.handler
+      # Up to 100 invites, one after another; it stops early, leaving the rest queued, if time runs short
+      Timeout: 900
+      LoggingConfig:
+        LogGroup: !Ref InviteFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SignupsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CountersTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RegistrationCodeApiKeyParameter}
+            # The domain, and the address itself in case it's also verified on its own (SES then checks that one)
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesIdentity}
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}
+
+  InviteFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/lcw-welcome-invite
+      RetentionInDays: 30
+
+  # One row per email address. The status-index lists the queue in sign-up order.
+  SignupsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lcw-welcome-signups
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: signedUpAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: signedUpAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # The first-100 count, each day's emails, and each IP address's sign-ups this hour
+  CountersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lcw-welcome-counters
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: removeAt
+        Enabled: true
+
+  # Alerts: the daily email cap reached, or an invite that failed
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: lcw-welcome-signup-alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  CapReachedSignupFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SignupFunctionLogGroup
+      FilterPattern: '"DAILY_EMAIL_CAP_REACHED"'
+      MetricTransformations:
+        - { MetricNamespace: lcw-welcome, MetricName: DailyEmailCapReached, MetricValue: '1', DefaultValue: 0 }
+  CapReachedInviteFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref InviteFunctionLogGroup
+      FilterPattern: '"DAILY_EMAIL_CAP_REACHED"'
+      MetricTransformations:
+        - { MetricNamespace: lcw-welcome, MetricName: DailyEmailCapReached, MetricValue: '1', DefaultValue: 0 }
+  InviteFailedSignupFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SignupFunctionLogGroup
+      FilterPattern: '?"INVITE_FAILED" ?"SIGNUP_FAILED"'
+      MetricTransformations:
+        - { MetricNamespace: lcw-welcome, MetricName: SignupProblems, MetricValue: '1', DefaultValue: 0 }
+  InviteFailedInviteFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref InviteFunctionLogGroup
+      FilterPattern: '"INVITE_FAILED"'
+      MetricTransformations:
+        - { MetricNamespace: lcw-welcome, MetricName: SignupProblems, MetricValue: '1', DefaultValue: 0 }
+
+  CapReachedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: lcw-welcome-daily-email-cap-reached
+      AlarmDescription: The welcome page's sign-up reached its daily email cap. Invites stop until tomorrow (UTC); people stay queued. Raise DailyEmailCap if this is real demand.
+      Namespace: lcw-welcome
+      MetricName: DailyEmailCapReached
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+  ProblemsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: lcw-welcome-signup-problems
+      AlarmDescription: An invite failed (making the code or sending the email) or a sign-up failed. Check the lcw-welcome-signup and lcw-welcome-invite logs.
+      Namespace: lcw-welcome
+      MetricName: SignupProblems
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  # Any error or timeout in either function, which the log filters above can't see
+  SignupFunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: lcw-welcome-signup-function-errors
+      AlarmDescription: The sign-up function failed or timed out. Check the lcw-welcome-signup log.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignupFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+  InviteFunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: lcw-welcome-invite-function-errors
+      AlarmDescription: Inviting the next group failed or timed out. Check the lcw-welcome-invite log.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref InviteFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+Outputs:
+  SignupUrl:
+    Description: The address the welcome page posts its form to. Build the page with SIGNUP_API set to it.
+    Value: !Sub https://${SignupHttpApi}.execute-api.${AWS::Region}.amazonaws.com/signup
+  InviteFunctionArn:
+    Description: '"Invite the next N", for the admin console to invoke.'
+    Value: !GetAtt InviteFunction.Arn
+  SignupsTableName:
+    Description: The sign-ups table, for the admin console to list.
+    Value: !Ref SignupsTable
