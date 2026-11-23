@@ -158,7 +158,8 @@ createServer(async (req, res) => {
 }).listen(API_PORT);
 
 // --- The page, built as usual, with the form pointed at the API above
-const built = spawnSync(process.execPath, ["scripts/build.mjs"], { cwd: REPO, encoding: "utf8" });
+// SIGNUP_API emptied, so an address left in the shell (after a deploy, say) can't point this page at a real service
+const built = spawnSync(process.execPath, ["scripts/build.mjs"], { cwd: REPO, encoding: "utf8", env: { ...process.env, SIGNUP_API: "" } });
 if (built.status !== 0) throw new Error(`The page didn't build:\n${built.stderr}`);
 const DIST = join(REPO, "dist");
 const types = { ".html": "text/html; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".txt": "text/plain; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
@@ -220,7 +221,11 @@ createServer(async (req, res) => {
         if (!file.startsWith(DIST)) return res.writeHead(403).end();
         if ((await stat(file)).isDirectory()) file = join(file, "index.html");
         let body = await readFile(file);
-        if (file.endsWith(".html")) body = body.toString("utf8").replace('<meta name="lcw-signup-api" content="">', `<meta name="lcw-signup-api" content="${API}">`);
+        if (file.endsWith(".html")) {
+            const html = body.toString("utf8");
+            if (!html.includes('<meta name="lcw-signup-api" content="">')) throw new Error("The built page has no empty lcw-signup-api meta tag, so it can't be pointed at the smoke test");
+            body = html.replace('<meta name="lcw-signup-api" content="">', `<meta name="lcw-signup-api" content="${API}">`);
+        }
         send(res, 200, body, types[extname(file)] || "application/octet-stream");
     } catch (error) {
         if (error.code === "ENOENT") return send(res, 404, "Not found", "text/plain");

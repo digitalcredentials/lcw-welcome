@@ -74,6 +74,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     const t = await setup("double");
     await Promise.all(Array.from({ length: 10 }, () => t.service.signUp(person(1), "10.0.0.1")));
     check("ten sign-ups at once with one email: one invite, one code", t.sendEmail.sent.length === 1 && t.mintCode.calls.length === 1);
+    check("...and one first-N place taken", (await t.store.count("auto-invites")) === 1);
     check("...and one row, invited", (await t.store.getSignup("p1@example.org")).status === "invited");
     t.clock.advance(2 * 3_600_000);
     await Promise.all(Array.from({ length: 5 }, () => t.service.signUp(person(1), "10.0.0.1")));
@@ -95,7 +96,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     await Promise.all(Array.from({ length: 12 }, (_, i) => t.service.signUp(person(i + 1), `10.0.1.${i}`)));
     const all = await statuses(t.store, 12);
     check("12 at once with a cap of 5: exactly 5 emails", t.sendEmail.sent.length === 5 && all.filter((s) => s === "invited").length === 5);
-    check("...the other 7 are queued and their first-N places given back", all.filter((s) => s === "queued").length === 7 && (await t.store.count("auto-invites")) === 5);
+    check("...the other 7 are queued and keep their first-N places", all.filter((s) => s === "queued").length === 7 && (await t.store.count("auto-invites")) === 12 && (await t.store.getSignup("p12@example.org")).autoInvite === 1);
     check("...and the alert line is logged", t.log.lines.some((l) => l.startsWith("error DAILY_EMAIL_CAP_REACHED")));
 }
 
@@ -122,7 +123,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     for (let i = 1; i <= 3; i++) { t.clock.advance(1000); await t.service.signUp(person(i), `10.0.3.${i}`); }
     const at = t.clock().toISOString();
     const claimed = await t.store.claim("p1@example.org", at, "");
-    await t.store.saveCode("p1@example.org", { code: "LCW-KEPT", link: "https://w.example/#/register?code=LCW-KEPT", expiresAt: "2027-03-01T00:00:00.000Z" });
+    await t.store.saveCode("p1@example.org", { code: "LCW-KEPT", link: "https://w.example/#/register?code=LCW-KEPT", expiresAt: "2027-03-01T00:00:00.000Z" }, at);
     check("a claim moves a queued sign-up to \"inviting\"", claimed?.status === "inviting" && claimed.claimedAt === at);
     check("a second claim right away is refused", (await t.store.claim("p1@example.org", at, new Date(Date.parse(at) - 15 * 60_000).toISOString())) === null);
     const soon = await t.service.inviteNext({ count: 3, dryRun: true });
@@ -136,7 +137,45 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("...and it ends invited, with no claim left", row.status === "invited" && row.code === "LCW-KEPT" && row.claimedAt === undefined);
 }
 
-for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck"]) {
+// --- An invite taken over once stale: the slow one can't undo or finish it
+{
+    const t = await setup("owner", { autoInviteLimit: 0 });
+    await t.service.signUp(person(1), "10.0.4.1");
+    const first = "2026-12-15T15:00:00.000Z", second = "2026-12-15T15:16:00.000Z";
+    await t.store.claim("p1@example.org", first, "");
+    check("a stale claim is taken over", (await t.store.claim("p1@example.org", second, "2026-12-15T15:01:00.000Z"))?.claimedAt === second);
+    await t.store.release("p1@example.org", first);
+    let row = await t.store.getSignup("p1@example.org");
+    check("the slow one's release does nothing", row.status === "inviting" && row.claimedAt === second);
+    let refused = 0;
+    try { await t.store.saveCode("p1@example.org", { code: "X", link: "L" }, first); } catch (e) { if (e.name === "ConditionalCheckFailedException") refused++; }
+    try { await t.store.markInvited("p1@example.org", first, first); } catch (e) { if (e.name === "ConditionalCheckFailedException") refused++; }
+    check("...its saveCode and markInvited are refused", refused === 2);
+    await t.store.saveCode("p1@example.org", { code: "Y", link: "L" }, second);
+    await t.store.markInvited("p1@example.org", second, second);
+    row = await t.store.getSignup("p1@example.org");
+    check("...and the one that took over finishes it", row.status === "invited" && row.code === "Y" && row.claimedAt === undefined);
+    await t.store.release("p1@example.org", second);
+    check("releasing an invited row does nothing", (await t.store.getSignup("p1@example.org")).status === "invited");
+}
+
+// --- Undoing a re-send's time
+{
+    const t = await setup("unmark", { autoInviteLimit: 1 });
+    await t.service.signUp(person(1), "10.0.5.1");
+    const invitedAt = (await t.store.getSignup("p1@example.org")).lastEmailedAt;
+    const later = "2026-12-15T18:00:00.000Z";
+    check("markEmailed after the gap moves the time on", await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z"));
+    await t.store.unmarkEmailed("p1@example.org", "2026-12-15T19:00:00.000Z", invitedAt);
+    check("unmarkEmailed with a different time does nothing", (await t.store.getSignup("p1@example.org")).lastEmailedAt === later);
+    await t.store.unmarkEmailed("p1@example.org", later, invitedAt);
+    check("unmarkEmailed with its own time puts the old one back", (await t.store.getSignup("p1@example.org")).lastEmailedAt === invitedAt);
+    await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z");
+    await t.store.unmarkEmailed("p1@example.org", later, undefined);
+    check("with no old time, it removes it", (await t.store.getSignup("p1@example.org")).lastEmailedAt === undefined);
+}
+
+for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark"]) {
     for (const name of [`signups-${suffix}`, `counters-${suffix}`]) await client.send(new DeleteTableCommand({ TableName: name }));
 }
 done();

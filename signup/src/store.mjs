@@ -12,11 +12,21 @@
 // sends the same code. The status-index (status, signedUpAt) lists the
 // queue in sign-up order.
 //
+// A sign-up given one of the first-N places has autoInvite = 1. If its invite
+// fails, it keeps the place and stays queued, first in line, until it's tried again.
+//
+// Each step of an invite after the claim (saveCode, release, markInvited)
+// checks claimedAt is still the claim it made, so an invite that was too slow
+// and taken over (once stale) can't undo or finish the one that took over.
+//
 // Counters table, one row per counter: key, n, and removeAt (epoch seconds;
 // DynamoDB deletes the row after it) on counters that only matter for a while:
-//   auto-invites           how many of the first sign-ups were invited automatically
+//   auto-invites           how many of the first-N places are taken
 //   emails#<YYYY-MM-DD>    emails sent that day (UTC)
-//   ip#<hash>#<hour>       sign-ups from one IP address in one hour (the address is hashed, not kept)
+//   ip#<hash>#<hour>       sign-ups from one network in one hour, kept 2 hours: an
+//                          IPv4 address, or an IPv6 /64, as an unsalted hash (it
+//                          hides the address at a glance, but someone who can read
+//                          the table could work an IPv4 address out from it)
 import {
     DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, QueryCommand,
     ConditionalCheckFailedException
@@ -55,12 +65,13 @@ export function dynamoStore({
         },
 
         // Adds a queued sign-up; false if the address has already signed up
-        async createSignup({ email, name, organization, signedUpAt }) {
+        async createSignup({ email, name, organization, signedUpAt, autoInvite }) {
             const done = await conditional(client, new PutItemCommand({
                 TableName: signupsTable,
                 Item: {
                     email: S(email), name: S(name), signedUpAt: S(signedUpAt), status: S("queued"),
-                    ...(organization && { organization: S(organization) })
+                    ...(organization && { organization: S(organization) }),
+                    ...(autoInvite && { autoInvite: N(1) })
                 },
                 ConditionExpression: "attribute_not_exists(email)"
             }));
@@ -84,38 +95,38 @@ export function dynamoStore({
         },
 
         // Keeps a newly made code on the row, before it's emailed
-        async saveCode(email, { code, link, expiresAt }) {
+        async saveCode(email, { code, link, expiresAt }, claimedAt) {
             await client.send(new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
                 UpdateExpression: "SET code = :code, link = :link, expiresAt = :expiresAt",
-                ConditionExpression: "#status = :inviting",
+                ConditionExpression: "#status = :inviting AND claimedAt = :claimedAt",
                 ExpressionAttributeNames: { "#status": "status" },
-                ExpressionAttributeValues: { ":inviting": S("inviting"), ":code": S(code), ":link": S(link), ":expiresAt": S(expiresAt ?? "") }
+                ExpressionAttributeValues: { ":inviting": S("inviting"), ":claimedAt": S(claimedAt), ":code": S(code), ":link": S(link), ":expiresAt": S(expiresAt ?? "") }
             }));
         },
 
         // Puts a sign-up whose invite didn't go out back in the queue, in its
         // old place (its signedUpAt is unchanged)
-        async release(email) {
+        async release(email, claimedAt) {
             await conditional(client, new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
                 UpdateExpression: "SET #status = :queued",
-                ConditionExpression: "#status = :inviting",
+                ConditionExpression: "#status = :inviting AND claimedAt = :claimedAt",
                 ExpressionAttributeNames: { "#status": "status" },
-                ExpressionAttributeValues: { ":queued": S("queued"), ":inviting": S("inviting") }
+                ExpressionAttributeValues: { ":queued": S("queued"), ":inviting": S("inviting"), ":claimedAt": S(claimedAt) }
             }));
         },
 
-        async markInvited(email, at) {
+        async markInvited(email, at, claimedAt) {
             await client.send(new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
                 UpdateExpression: "SET #status = :invited, invitedAt = :at, lastEmailedAt = :at REMOVE claimedAt",
-                ConditionExpression: "#status = :inviting",
+                ConditionExpression: "#status = :inviting AND claimedAt = :claimedAt",
                 ExpressionAttributeNames: { "#status": "status" },
-                ExpressionAttributeValues: { ":invited": S("invited"), ":inviting": S("inviting"), ":at": S(at) }
+                ExpressionAttributeValues: { ":invited": S("invited"), ":inviting": S("inviting"), ":at": S(at), ":claimedAt": S(claimedAt) }
             }));
         },
 
@@ -131,6 +142,19 @@ export function dynamoStore({
                 ExpressionAttributeValues: { ":at": S(at), ":before": S(before), ":invited": S("invited") }
             }));
             return done !== false;
+        },
+
+        // Undoes markEmailed when the re-send didn't go out (the daily cap, or
+        // SES failed), so trying again isn't blocked for the re-send gap.
+        // Only if lastEmailedAt is still the `at` that markEmailed set.
+        async unmarkEmailed(email, at, previous) {
+            await conditional(client, new UpdateItemCommand({
+                TableName: signupsTable,
+                Key: key(email),
+                UpdateExpression: previous ? "SET lastEmailedAt = :previous" : "REMOVE lastEmailedAt",
+                ConditionExpression: "lastEmailedAt = :at",
+                ExpressionAttributeValues: { ":at": S(at), ...(previous && { ":previous": S(previous) }) }
+            }));
         },
 
         // The first `limit` sign-ups waiting for an invite, oldest first: the

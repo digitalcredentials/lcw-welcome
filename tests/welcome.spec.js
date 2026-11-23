@@ -187,6 +187,9 @@ test.describe('sign-up, sending to the sign-up service', () => {
     for (const file of ['dist/index.html', 'dist/feedback/index.html']) {
       expect(await readFile(join(dir, file), 'utf8')).toContain(`<meta name="lcw-signup-api" content="${SIGNUP_API}">`);
     }
+    // A $ or & in the address comes through as written ($& would otherwise be read as a replacement pattern)
+    expect((await build({ SIGNUP_API: 'https://x.example/signup?a=$&b=1' })).code).toBe(0);
+    expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<meta name="lcw-signup-api" content="https://x.example/signup?a=$&amp;b=1">');
     for (const bad of ['http://signup.example.test/signup', 'https://x.example/"><script>', 'javascript:alert(1)']) {
       const result = await build({ SIGNUP_API: bad });
       expect(result.code).not.toBe(0);
@@ -252,7 +255,7 @@ test.describe('sign-up, sending to the sign-up service', () => {
 
   test('too many sign-ups from one network: says so, and keeps what was typed', async ({ page, context }) => {
     await guard(context);
-    await withSignupApi(page, () => ({ status: 429, body: { error: 'Too many sign-ups from your network. Try again later.' } }));
+    await withSignupApi(page, () => ({ status: 429, body: { error: 'Too many sign-ups from your network. Try again later.', reason: 'ip-hourly-limit' } }));
     await page.goto('/');
     await fillSignup(page, { org: 'DCC' });
     await page.click('#access-form button[type=submit]');
@@ -266,7 +269,8 @@ test.describe('sign-up, sending to the sign-up service', () => {
     await expect(page.locator('#access-email')).not.toHaveAttribute('aria-invalid', 'true');
   });
 
-  for (const [label, answer] of [['the service fails', () => ({ status: 500 })], ['the request is refused', () => ({ status: 400 })], ['there is no connection', () => 'abort']]) {
+  for (const [label, answer] of [['the service fails', () => ({ status: 500 })], ['the request is refused', () => ({ status: 400 })], ['there is no connection', () => 'abort'],
+    ["API Gateway's whole-API throttle answers 429", () => ({ status: 429, body: { message: 'Too Many Requests' } })]]) {
     test(`when ${label}, it asks to try again, and trying again works`, async ({ page, context }) => {
       await guard(context);
       let first = true;

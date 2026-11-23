@@ -12,7 +12,8 @@ const api = process.env.SIGNUP_API ?? '';
 if (api && !/^https:\/\/[^\s"<>]+$/.test(api)) throw new Error('build: SIGNUP_API must be an https:// address');
 const source = await readFile('src/index.html', 'utf8');
 if (!source.includes(META)) throw new Error('build: could not find the lcw-signup-api meta tag');
-const page = source.replace(META, `<meta name="lcw-signup-api" content="${api}">`);
+// A function, so a $ in the address isn't read as a replacement pattern; & is escaped for the attribute
+const page = source.replace(META, () => `<meta name="lcw-signup-api" content="${api.replace(/&/g, '&amp;')}">`);
 const marked = page.replace('<html lang="en">', '<html lang="en" data-feedback-page>');
 const feedback = marked.replace(/(src|href)="img\//g, '$1="../img/');
 if (marked === page || !feedback.includes('"../img/')) throw new Error('build: could not make the /feedback copy');

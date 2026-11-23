@@ -34,6 +34,7 @@ const person = (i, extra = {}) => ({ name: `Person ${i}`, email: `p${i}@example.
     check("the organization is kept, trimmed", row.organization === "DCC");
     check("no organization, no organization field", !("organization" in t.store.signups.get("p2@example.org")));
     check("the auto-invite count is 3", t.store.counters.get("auto-invites") === 3);
+    check("the first 3 rows record their first-N place; the others don't", [1, 2, 3].every((i) => t.store.signups.get(`p${i}@example.org`).autoInvite === 1) && [4, 5].every((i) => !t.store.signups.get(`p${i}@example.org`).autoInvite));
     check("today's email count is 3", t.store.counters.get("emails#2026-12-15") === 3);
 }
 
@@ -105,7 +106,7 @@ const person = (i, extra = {}) => ({ name: `Person ${i}`, email: `p${i}@example.
     const b = await t.signUp(person(2), "203.0.113.9");
     const c = await t.signUp(person(3), "203.0.113.9");
     check("2 sign-ups from one address are accepted", a.status === 202 && b.status === 202);
-    check("the 3rd in the same hour -> 429", c.status === 429 && /Too many sign-ups/.test(c.body.error) && !t.store.signups.has("p3@example.org"));
+    check("the 3rd in the same hour -> 429, marked as the per-network limit", c.status === 429 && /Too many sign-ups/.test(c.body.error) && c.body.reason === "ip-hourly-limit" && !t.store.signups.has("p3@example.org"));
     const other = await t.signUp(person(4), "198.51.100.7");
     check("another address is still accepted", other.status === 202);
     t.clock.advance(HOUR);
@@ -120,11 +121,13 @@ const person = (i, extra = {}) => ({ name: `Person ${i}`, email: `p${i}@example.
     for (let i = 1; i <= 3; i++) await t.signUp(person(i));
     check("emails stop at the cap", t.sendEmail.sent.length === 2);
     check("the person over the cap is queued, with no code made", t.store.signups.get("p3@example.org").status === "queued" && t.mintCode.calls.length === 2);
-    check("...and doesn't use up one of the first N", t.store.counters.get("auto-invites") === 2);
+    check("...and keeps their place among the first N", t.store.counters.get("auto-invites") === 3 && t.store.signups.get("p3@example.org").autoInvite === 1);
     check("reaching the cap logs the alert line", t.log.lines.some((l) => l.startsWith("error DAILY_EMAIL_CAP_REACHED")));
     t.clock.set("2026-12-16T00:00:01.000Z");
     await t.signUp(person(4));
     check("the next day (UTC), invites go out again", t.store.signups.get("p4@example.org").status === "invited");
+    await t.signUp(person(3));
+    check("the person who hit the cap, signing up again, gets the invite they were owed", t.store.signups.get("p3@example.org").status === "invited" && t.store.counters.get("auto-invites") === 4);
 }
 
 // --- When making the code or sending the email fails
@@ -134,7 +137,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     const answer = await t.signUp(person(1));
     check(`${what} failing: the form still gets 202`, answer.status === 202);
     check(`${what} failing: the person goes back in the queue`, t.store.signups.get("p1@example.org").status === "queued");
-    check(`${what} failing: the first-N place and today's email are given back`, t.store.counters.get("auto-invites") === 0 && t.store.counters.get("emails#2026-12-15") === 0);
+    check(`${what} failing: today's email is given back; they keep their first-N place`, t.store.counters.get("auto-invites") === 1 && t.store.counters.get("emails#2026-12-15") === 0 && t.store.signups.get("p1@example.org").autoInvite === 1);
     check(`${what} failing: INVITE_FAILED is logged, for the alarm`, t.log.lines.some((l) => l.startsWith("error INVITE_FAILED")));
     t[what].fail = false;
     const later = await t.service.inviteNext({ count: 5 });
@@ -237,6 +240,83 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.store.listQueued = async () => listed;   // both runs see the same two rows
     const [a, b] = await Promise.all([t.service.inviteNext({ count: 2 }), t.service.inviteNext({ count: 2 })]);
     check("two runs at once invite each person once", t.sendEmail.sent.length === 2 && a.invited.length + b.invited.length === 2 && a.skipped.length + b.skipped.length === 2);
+}
+
+// --- One of the first N whose invite failed isn't overtaken by later sign-ups
+{
+    const t = setup({ autoInviteLimit: 2 });
+    t.mintCode.fail = true;
+    await t.signUp(person(1));
+    t.mintCode.fail = false;
+    await t.signUp(person(2));
+    await t.signUp(person(3));
+    check("a failed first-N invite keeps the place: the 2nd is invited, the 3rd queued", t.store.signups.get("p2@example.org").status === "invited" && t.store.signups.get("p3@example.org").status === "queued" && !t.store.signups.get("p3@example.org").autoInvite);
+    check("...and the 1st is first in the queue", (await t.service.inviteNext({ count: 1, dryRun: true })).wouldInvite[0].email === "p1@example.org");
+    await t.signUp(person(3));
+    check("the 3rd signing up again isn't invited (not one of the first N)", t.store.signups.get("p3@example.org").status === "queued");
+    await t.signUp(person(1));
+    check("the 1st signing up again is invited", t.store.signups.get("p1@example.org").status === "invited" && t.sendEmail.sent.at(-1).to === "p1@example.org");
+    check("...and the count stays at 2", t.store.counters.get("auto-invites") === 2);
+}
+{
+    const t = setup({ autoInviteLimit: 2 });
+    await t.signUp(person(1));
+    await t.signUp(person(1));
+    await t.signUp(person(1));
+    check("signing up again doesn't take another first-N place", t.store.counters.get("auto-invites") === 1);
+}
+
+// --- A re-send that doesn't go out doesn't block trying again
+{
+    const t = setup({ autoInviteLimit: 5, dailyEmailCap: 2 });
+    await t.signUp(person(1));
+    await t.signUp(person(2));                            // the cap (2) is used up
+    t.clock.set("2026-12-15T23:59:30.000Z");
+    await t.signUp(person(1));
+    check("a re-send at the cap sends nothing", t.sendEmail.sent.length === 2);
+    check("...and puts the last-emailed time back", t.store.signups.get("p1@example.org").lastEmailedAt === "2026-12-15T15:00:00.001Z", t.store.signups.get("p1@example.org").lastEmailedAt);
+    t.clock.set("2026-12-16T00:00:30.000Z");             // a minute later, a new day
+    await t.signUp(person(1));
+    check("a minute later, after the cap resets, the re-send goes", t.sendEmail.sent.length === 3 && t.sendEmail.sent[2].to === "p1@example.org");
+    t.sendEmail.fail = true;
+    t.clock.set("2026-12-16T02:00:00.000Z");
+    await t.signUp(person(2));
+    check("a re-send SES refuses: logged, today's email given back, last-emailed time put back",
+        t.log.lines.some((l) => l.includes("INVITE_FAILED re-sending")) && t.store.counters.get("emails#2026-12-16") === 1 && t.store.signups.get("p2@example.org").lastEmailedAt === "2026-12-15T15:00:00.002Z");
+    t.sendEmail.fail = false;
+    t.clock.advance(60_000);
+    await t.signUp(person(2));
+    check("...a minute later, trying again sends it", t.sendEmail.sent.at(-1).to === "p2@example.org" && t.sendEmail.sent.length === 4);
+}
+
+// --- An invite taken over after it went stale can't be undone or finished by the slow one
+{
+    const t = setup({ autoInviteLimit: 0 });
+    await t.signUp(person(1));
+    const first = "2026-12-15T15:00:00.000Z", second = "2026-12-15T15:16:00.000Z";
+    await t.store.claim("p1@example.org", first, "");
+    await t.store.claim("p1@example.org", second, "2026-12-15T15:01:00.000Z");   // stale, so taken over
+    await t.store.release("p1@example.org", first);
+    check("the slow one's release does nothing", t.store.signups.get("p1@example.org").status === "inviting" && t.store.signups.get("p1@example.org").claimedAt === second);
+    let refused = 0;
+    try { await t.store.saveCode("p1@example.org", { code: "X", link: "L" }, first); } catch { refused++; }
+    try { await t.store.markInvited("p1@example.org", first, first); } catch { refused++; }
+    check("...and its saveCode and markInvited are refused", refused === 2 && !t.store.signups.get("p1@example.org").code);
+}
+
+// --- The per-network limit counts an IPv6 /64 as one network
+{
+    const t = setup({ ipHourlyLimit: 2 });
+    const a = await t.signUp(person(1), "2001:db8:1:2::1");
+    const b = await t.signUp(person(2), "2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+    const c = await t.signUp(person(3), "2001:0db8:0001:0002::ffff");
+    const d = await t.signUp(person(4), "2001:db8:1:3::1");
+    check("two addresses in one /64 use up its limit; a third is refused", a.status === 202 && b.status === 202 && c.status === 429);
+    check("another /64 is counted on its own", d.status === 202);
+    const e = await t.signUp(person(5), "::ffff:203.0.113.9");
+    const f = await t.signUp(person(6), "203.0.113.9");
+    const g = await t.signUp(person(7), "203.0.113.9");
+    check("an IPv4 address written as IPv6 counts as that IPv4 address", e.status === 202 && f.status === 202 && g.status === 429);
 }
 
 // --- The email

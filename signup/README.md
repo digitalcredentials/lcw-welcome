@@ -5,26 +5,31 @@ The back end for the welcome page's early-access form (#3, #4). It keeps the sig
 ## How it works
 
 - **The form** posts `{ name, email, organization, website }` to `POST /signup`. `website` is the honeypot: a field people never see, so only a bot fills it in.
-- **The first 100 sign-ups** (`AutoInviteLimit`) are invited straight away. The 100 counts invites sent, not accounts made.
+- **The first 100 sign-ups** (`AutoInviteLimit`) are invited straight away. The 100 counts people, not accounts made. If one of their invites fails, they keep their place among the 100 and stay first in the queue. They're invited when they sign up again, or by the next "invite the next N", whichever comes first, so later sign-ups can't overtake them.
 - **Everyone after that is queued.** "Invite the next N" (`lcw-welcome-invite`) invites the next N in sign-up order. The admin console runs it; there's no public route to it.
 - **Each invite** asks lcw-back-end's `POST /registration-codes` for a code, then emails the link it answers from `support@lcw.app`. The link opens the wallet's register page with the code filled in. A code is used up when an account made with it is confirmed, and works for 90 days (lcw-back-end's settings).
 - **Signing up again with the same email** re-sends the same code, at most once an hour. A new code is never made, even after the old one expires: that would let one address set up a second wallet. Someone whose code has expired emails support for a new one, as the wallet's register page already says.
 - **The invite email holds nothing typed into the form**, not even the name. Anyone can sign up any address, so anything typed there would let a stranger send their own words from support@lcw.app.
 - **Every accepted sign-up gets the same answer** (`202 { ok: true }`), so the form can't be used to find out who has signed up.
-- **If an invite fails** (making the code or sending the email), the person goes back to their place in the queue and the team is alerted. A code is kept as soon as it's made, so trying again sends that same code.
-- **An invite that never finished** (the function timed out partway, say) counts as queued again after 15 minutes. The next "invite the next N", or the person signing up again, finishes it with the code already made.
+- **If an invite fails** (making the code or sending the email), the person goes back to their place in the queue and the team is alerted. A code is kept as soon as it's made, so trying again sends that same code. If a re-send fails, or hits the daily cap, its time is undone, so signing up again later isn't blocked for an hour.
+- **An invite that never finished** (the function timed out partway, say) counts as queued again after 15 minutes. The next "invite the next N", or the person signing up again, finishes it with the code already made. Each step of an invite checks it still holds the claim it made, so a slow invite that was taken over can't undo or repeat the one that took over.
 
 ## Misuse protection
 
 | What | Setting | Default |
 |---|---|---|
 | A honeypot field | | |
-| Sign-ups per IP address per hour (the address is hashed, not kept) | `IpHourlyLimit` | 10 |
+| Sign-ups per network per hour: one IPv4 address, or one IPv6 /64, since an IPv6 user can switch between addresses in their /64. The page says "too many from your network" only for this limit. | `IpHourlyLimit` | 10 |
 | One code per email address | | |
 | Emails per day (UTC). Reaching it stops invites until the next day and emails `AlertEmail`. People stay queued. | `DailyEmailCap` | 300 |
-| Requests to the whole API | `DefaultRouteSettings` in `template.yaml` | 10 a second, bursts of 20 |
+| Requests to the whole API (API Gateway answers 429 past it, and the page shows its "try again" message) | `DefaultRouteSettings` in `template.yaml` | 10 a second, bursts of 20 |
 
 No CAPTCHA unless misuse shows up.
+
+Two limits to know about:
+
+- **The whole-API limit is shared.** A script sending more than 10 requests a second slows sign-up for everyone while it runs. AWS WAF can't be attached to an HTTP API, so the fix, if it happens, is a REST API with WAF rate rules, or a CAPTCHA.
+- **The per-network count is kept as an unsalted hash, for 2 hours** (DynamoDB deletes it after that). The hash hides the address at a glance, but someone who can read the table could work an IPv4 address out from it.
 
 ## What's where
 
@@ -35,7 +40,7 @@ No CAPTCHA unless misuse shows up.
 - `src/email.mjs`: the invite email. Its wording is a draft (see `PLACEHOLDERS.md`).
 - `src/signup.mjs`, `src/invite.mjs`: the two Lambda handlers.
 
-Tables: `lcw-welcome-signups` (one row per email; `status` is `queued`, `inviting` or `invited`; the code is kept on the row) and `lcw-welcome-counters` (the first-100 count, each day's emails, and each IP address's sign-ups this hour).
+Tables: `lcw-welcome-signups` (one row per email; `status` is `queued`, `inviting` or `invited`; the code is kept on the row; `autoInvite` marks one of the first 100) and `lcw-welcome-counters` (the first-100 count, each day's emails, and each network's sign-ups this hour).
 
 ## Test
 

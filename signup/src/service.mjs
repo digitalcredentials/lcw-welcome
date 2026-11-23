@@ -4,7 +4,10 @@
 //
 // Agreed in digitalcredentials/lcw-welcome#3 and #4:
 // - The first AUTO_INVITE_LIMIT sign-ups (100) are invited straight away.
-//   The 100 counts invites sent, not accounts made.
+//   The 100 counts people, not accounts made. If one of their invites fails
+//   (lcw-back-end or SES down, or the daily cap), they keep their place among
+//   the 100, stay first in the queue, and are tried again when they sign up
+//   again or by the next "invite the next N".
 // - Everyone after that waits. "Invite the next N" (invite.mjs, run from the
 //   admin console) invites the next N in sign-up order.
 // - A code is made when a person is invited, by lcw-back-end's
@@ -22,6 +25,24 @@ const MAX = { name: 200, organization: 200, email: 254 };
 const hour = (now) => now.toISOString().slice(0, 13);   // 2026-12-15T09
 const day = (now) => now.toISOString().slice(0, 10);    // 2026-12-15
 const epoch = (date) => Math.floor(date.getTime() / 1000);
+
+// The part of an address one person controls, which the per-IP limit counts:
+// a whole IPv4 address, or the first half (the /64) of an IPv6 one, since an
+// IPv6 home or server usually has a whole /64 to pick addresses from.
+export function networkOf(ip) {
+    const text = String(ip ?? "unknown").trim().toLowerCase();
+    const v4 = text.match(/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (v4) return v4[1];
+    if (!/^[0-9a-f:]+$/.test(text) || !text.includes(":")) return text;
+    const halves = text.split("::");
+    if (halves.length > 2) return text;
+    const left = halves[0] ? halves[0].split(":") : [];
+    const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+    const missing = 8 - left.length - right.length;
+    if (missing < 0 || (halves.length === 1 && missing !== 0)) return text;
+    const groups = [...left, ...Array(halves.length === 2 ? missing : 0).fill("0"), ...right];
+    return groups.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/64";
+}
 
 export function configFromEnv(env = process.env) {
     return {
@@ -48,9 +69,9 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
 
     // Undoes a claim after an invite didn't go out. A failure here is only
     // logged: the row is then left "inviting", and is tried again once stale.
-    async function putBack(email, now, { emailTaken }) {
+    async function putBack(email, now, claimedAt, { emailTaken }) {
         try {
-            await store.release(email);
+            await store.release(email, claimedAt);
             if (emailTaken) await store.giveBack(`emails#${day(now)}`);
         } catch (error) {
             log.error("INVITE_FAILED: couldn't put a sign-up back in the queue; it's tried again in a few minutes:", error?.message ?? error);
@@ -64,26 +85,27 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
     // the sign-up goes back in the queue in its old place.
     async function inviteOne(email) {
         const now = clock();
-        const row = await store.claim(email, now.toISOString(), staleBefore(now));
+        const claimedAt = now.toISOString();
+        const row = await store.claim(email, claimedAt, staleBefore(now));
         if (!row) return "skipped";
         if (!(await takeEmail(now))) {
-            await putBack(email, now, { emailTaken: false });
+            await putBack(email, now, claimedAt, { emailTaken: false });
             return "cap";
         }
         let codes = row.code ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
         try {
             if (!codes) {
                 codes = await mintCode(email);
-                await store.saveCode(email, codes);
+                await store.saveCode(email, codes, claimedAt);
             }
             await sendEmail({ to: email, ...inviteEmail(codes) });
         } catch (error) {
             log.error(`INVITE_FAILED for a sign-up (${codes ? "sending the email" : "making the code"}):`, error?.message ?? error);
-            await putBack(email, now, { emailTaken: true });
+            await putBack(email, now, claimedAt, { emailTaken: true });
             return "failed";
         }
         try {
-            await store.markInvited(email, now.toISOString());
+            await store.markInvited(email, claimedAt, claimedAt);
         } catch (error) {
             // The email went; only the record of it failed. Once stale, the row is
             // tried again, which re-sends the same code.
@@ -111,35 +133,44 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         if (!EMAIL.test(email) || email.length > MAX.email) return { status: 400, body: { error: "Check your email address." } };
 
         const now = clock();
-        const ipKey = `ip#${createHash("sha256").update(String(ip ?? "unknown")).digest("hex").slice(0, 32)}#${hour(now)}`;
+        const ipKey = `ip#${createHash("sha256").update(networkOf(ip)).digest("hex").slice(0, 32)}#${hour(now)}`;
         if (!(await store.take(ipKey, config.ipHourlyLimit, epoch(now) + 2 * 3600))) {
-            log.warn("A sign-up was refused: too many from one IP address this hour");
-            return { status: 429, body: { error: "Too many sign-ups from your network. Try again later." } };
+            log.warn("A sign-up was refused: too many from one network this hour");
+            // reason tells the page this is the per-network limit, not API Gateway's own 429 (its whole-API throttle)
+            return { status: 429, body: { error: "Too many sign-ups from your network. Try again later.", reason: "ip-hourly-limit" } };
         }
 
-        if (await store.createSignup({ email, name, organization, signedUpAt: now.toISOString() })) {
-            if (await store.take("auto-invites", config.autoInviteLimit)) {
-                const result = await inviteOne(email);
-                if (result !== "invited") await store.giveBack("auto-invites");
-            }
+        // A first-N place is taken before the row is made, so the row records it
+        const autoInvite = await store.take("auto-invites", config.autoInviteLimit);
+        if (await store.createSignup({ email, name, organization, signedUpAt: now.toISOString(), autoInvite })) {
+            // If this invite fails, they keep the place and stay first in the queue (see the top of this file)
+            if (autoInvite) await inviteOne(email);
             return ok;
         }
+        if (autoInvite) await store.giveBack("auto-invites");   // signed up before, so not a new place
 
-        // Signed up before: finish an invite that got stuck, or re-send their code if they've been invited
+        // Signed up before: finish an invite they're owed (one of the first N whose
+        // invite failed, or one that got stuck), or re-send their code if they've been invited
         const row = await store.getSignup(email);
-        if (row?.status === "inviting" && row.claimedAt < staleBefore(now)) {
+        if ((row?.status === "queued" && row.autoInvite) || (row?.status === "inviting" && row.claimedAt < staleBefore(now))) {
             await inviteOne(email);
             return ok;
         }
         if (row?.status !== "invited") return ok;
+        const at = now.toISOString();
         const before = new Date(now.getTime() - config.resendGapMinutes * 60_000).toISOString();
-        if (await store.markEmailed(email, now.toISOString(), before) && await takeEmail(now)) {
-            try {
-                await sendEmail({ to: email, ...inviteEmail(row) });
-            } catch (error) {
-                log.error("INVITE_FAILED re-sending an invite:", error?.message ?? error);
-                await store.giveBack(`emails#${day(now)}`);
-            }
+        if (!(await store.markEmailed(email, at, before))) return ok;   // re-sent within the gap
+        // If the re-send doesn't go out, undo markEmailed, so trying again later isn't blocked for the gap
+        const undo = async () => {
+            try { await store.unmarkEmailed(email, at, row.lastEmailedAt); } catch (error) { log.error("Couldn't undo a re-send's time:", error?.message ?? error); }
+        };
+        if (!(await takeEmail(now))) { await undo(); return ok; }
+        try {
+            await sendEmail({ to: email, ...inviteEmail(row) });
+        } catch (error) {
+            log.error("INVITE_FAILED re-sending an invite:", error?.message ?? error);
+            await store.giveBack(`emails#${day(now)}`);
+            await undo();
         }
         return ok;
     }

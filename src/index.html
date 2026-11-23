@@ -1131,7 +1131,8 @@ var LCW_START_HASH = location.hash;
     var ctrl=('AbortController' in window)?new AbortController():null, timer=ctrl&&setTimeout(function(){ ctrl.abort(); }, 30000);
     fetch(api, { method:'POST', headers:{'Content-Type':'application/json'}, signal:ctrl&&ctrl.signal,
       body:JSON.stringify({ name:nameIn.value.trim(), email:v, organization:orgIn.value.trim(), website:trap.value }) })
-      .then(function(r){ return r.status===202 ? 'ok' : r.status===429 ? 'limit' : 'failed'; }, function(){ return 'failed'; })
+      /* a 429 is the per-network limit only when the service says so; API Gateway's own 429 (its whole-API throttle) isn't this person's doing */
+      .then(function(r){ return r.status===202 ? 'ok' : r.status!==429 ? 'failed' : r.json().then(function(b){ return b && b.reason==='ip-hourly-limit' ? 'limit' : 'failed'; }, function(){ return 'failed'; }); }, function(){ return 'failed'; })
       .then(function(result){
         clearTimeout(timer); submit.disabled=false; form.removeAttribute('aria-busy');
         if(result==='ok') showDone(v);

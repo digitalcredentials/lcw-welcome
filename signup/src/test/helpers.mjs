@@ -7,9 +7,9 @@ export function memoryStore() {
     return {
         signups, counters,
         async getSignup(email) { return copy(signups.get(email)); },
-        async createSignup({ email, name, organization, signedUpAt }) {
+        async createSignup({ email, name, organization, signedUpAt, autoInvite }) {
             if (signups.has(email)) return false;
-            signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }) });
+            signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }), ...(autoInvite && { autoInvite: 1 }) });
             return true;
         },
         async claim(email, at, staleBefore) {
@@ -19,15 +19,15 @@ export function memoryStore() {
             row.claimedAt = at;
             return copy(row);
         },
-        async saveCode(email, { code, link, expiresAt }) {
+        async saveCode(email, { code, link, expiresAt }, claimedAt) {
             const row = signups.get(email);
-            if (row?.status !== "inviting") throw new Error("ConditionalCheckFailed");
+            if (row?.status !== "inviting" || row.claimedAt !== claimedAt) throw new Error("ConditionalCheckFailed");
             Object.assign(row, { code, link, expiresAt: expiresAt ?? "" });
         },
-        async release(email) { const row = signups.get(email); if (row?.status === "inviting") row.status = "queued"; },
-        async markInvited(email, at) {
+        async release(email, claimedAt) { const row = signups.get(email); if (row?.status === "inviting" && row.claimedAt === claimedAt) row.status = "queued"; },
+        async markInvited(email, at, claimedAt) {
             const row = signups.get(email);
-            if (row?.status !== "inviting") throw new Error("ConditionalCheckFailed");
+            if (row?.status !== "inviting" || row.claimedAt !== claimedAt) throw new Error("ConditionalCheckFailed");
             Object.assign(row, { status: "invited", invitedAt: at, lastEmailedAt: at });
             delete row.claimedAt;
         },
@@ -36,6 +36,11 @@ export function memoryStore() {
             if (row?.status !== "invited" || (row.lastEmailedAt && !(row.lastEmailedAt < before))) return false;
             row.lastEmailedAt = at;
             return true;
+        },
+        async unmarkEmailed(email, at, previous) {
+            const row = signups.get(email);
+            if (row?.lastEmailedAt !== at) return;
+            if (previous) row.lastEmailedAt = previous; else delete row.lastEmailedAt;
         },
         async listQueued(limit, staleBefore) {
             return [...signups.values()].filter((r) => r.status === "queued" || (r.status === "inviting" && r.claimedAt < staleBefore)).sort((a, b) => a.signedUpAt.localeCompare(b.signedUpAt)).slice(0, limit).map(copy);
