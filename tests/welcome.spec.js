@@ -236,10 +236,16 @@ test.describe('sign-up, sending to the sign-up service', () => {
     await page.goto('/');
     await page.click('#access-form button[type=submit]');
     await expect(page.locator('#access-err')).toHaveText('Enter your name.');
-    await fillSignup(page, { email: 'not-an-email' });
-    await page.click('#access-form button[type=submit]');
-    await expect(page.locator('#access-err')).toContainText('Check your email address.');
+    // The same addresses the sign-up service refuses: no display names, no non-ASCII
+    for (const email of ['not-an-email', 'x<victim@example.org>', 'a,b@example.org', 'josé@example.org', 'a@example']) {
+      await fillSignup(page, { email });
+      await page.click('#access-form button[type=submit]');
+      await expect(page.locator('#access-err')).toContainText('Check your email address.');
+    }
     expect(sent).toEqual([]);
+    await fillSignup(page, { email: "o'brien+wallet@mail.example.co.uk" });
+    await page.click('#access-form button[type=submit]');
+    await expect.poll(() => sent.length).toBe(1);
   });
 
   test('while it sends, the button is off, and pressing again sends nothing more', async ({ page, context }) => {

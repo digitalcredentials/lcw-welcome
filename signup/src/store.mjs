@@ -140,30 +140,33 @@ export function dynamoStore({
             }));
         },
 
-        // Records a re-sent invite, if the last email went before `before`;
-        // false if one went more recently. One request wins when two arrive together.
-        async markEmailed(email, at, before) {
+        // Records a re-sent invite, if the last email went before `before` and
+        // fewer than `maxResends` have been re-sent; false otherwise. Counts it in
+        // `resends`. One request wins when two arrive together.
+        async markEmailed(email, at, before, maxResends) {
             const done = await conditional(client, new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
-                UpdateExpression: "SET lastEmailedAt = :at",
-                ConditionExpression: "#status = :invited AND (attribute_not_exists(lastEmailedAt) OR lastEmailedAt < :before)",
+                UpdateExpression: "SET lastEmailedAt = :at ADD resends :one",
+                ConditionExpression: "#status = :invited AND (attribute_not_exists(lastEmailedAt) OR lastEmailedAt < :before)" +
+                    " AND (attribute_not_exists(resends) OR resends < :max)",
                 ExpressionAttributeNames: { "#status": "status" },
-                ExpressionAttributeValues: { ":at": S(at), ":before": S(before), ":invited": S("invited") }
+                ExpressionAttributeValues: { ":at": S(at), ":before": S(before), ":invited": S("invited"), ":one": N(1), ":max": N(maxResends) }
             }));
             return done !== false;
         },
 
-        // Undoes markEmailed when the re-send didn't go out (the daily cap, or
-        // SES failed), so trying again isn't blocked for the re-send gap.
-        // Only if lastEmailedAt is still the `at` that markEmailed set.
+        // Undoes markEmailed when the re-send didn't go out (a cap, or SES
+        // failed), so trying again isn't blocked for the re-send gap and the
+        // re-send isn't counted. Only if lastEmailedAt is still the `at` that
+        // markEmailed set.
         async unmarkEmailed(email, at, previous) {
             await conditional(client, new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
-                UpdateExpression: previous ? "SET lastEmailedAt = :previous" : "REMOVE lastEmailedAt",
+                UpdateExpression: (previous ? "SET lastEmailedAt = :previous" : "REMOVE lastEmailedAt") + " ADD resends :minus",
                 ConditionExpression: "lastEmailedAt = :at",
-                ExpressionAttributeValues: { ":at": S(at), ...(previous && { ":previous": S(previous) }) }
+                ExpressionAttributeValues: { ":at": S(at), ":minus": N(-1), ...(previous && { ":previous": S(previous) }) }
             }));
         },
 

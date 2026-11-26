@@ -1113,7 +1113,8 @@ var LCW_START_HASH = location.hash;
       again=document.getElementById('access-again'), orgIn=document.getElementById('access-org'),
       trap=document.getElementById('access-hp-x') /* the honeypot; named so browsers' autofill doesn't recognise it */, submit=form.querySelector('button[type=submit]'),
       api=(document.querySelector('meta[name="lcw-signup-api"]')||{}).content||'';
-  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // The same check as the sign-up service's (signup/src/service.mjs): plain ASCII addresses only
+  var EMAIL=/^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
   function showErr(msg){ err.textContent=msg; err.hidden=false; input.setAttribute('aria-invalid','true'); input.setAttribute('aria-describedby','access-err'); input.focus(); }
   function clearErr(){ err.hidden=true; err.textContent=''; input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby'); }
   input.addEventListener('input', function(){ if(!err.hidden && EMAIL.test(input.value.trim())) clearErr(); });

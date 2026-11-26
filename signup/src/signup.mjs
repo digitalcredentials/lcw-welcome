@@ -1,5 +1,6 @@
-// POST /signup: the welcome page's sign-up form. Public, called from the
-// browser; the HTTP API only lets the welcome page's own address call it (CORS).
+// POST /signup: the welcome page's sign-up form. Public: anyone can call it.
+// CORS only stops other web pages calling it from a browser, not scripts, so
+// the limits in service.mjs are what protect it.
 // Body: { name, email, organization?, website? }, where website is the honeypot.
 // Answers 202 { ok: true } for every accepted sign-up, 400 or 429 with
 // { error }, or 500 if something failed (nothing is lost: trying again is safe).

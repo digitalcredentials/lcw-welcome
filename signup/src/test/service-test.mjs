@@ -9,7 +9,7 @@ const HOUR = 3_600_000;
 
 function setup(overrides = {}) {
     const store = memoryStore(), mintCode = fakeMinter(), sendEmail = fakeMailer(), log = quietLog(), clock = manualClock();
-    const config = { autoInviteLimit: 3, dailyEmailCap: 100, ipHourlyLimit: 100, resendGapMinutes: 60, maxBatch: 100, ...overrides };
+    const config = { autoInviteLimit: 3, dailyEmailCap: 100, ipHourlyLimit: 100, resendGapMinutes: 60, resendDailyCap: 100, maxResends: 100, maxBatch: 100, ...overrides };
     const service = makeService({ store, mintCode, sendEmail, config, log, clock });
     let n = 0;
     // Signs someone up a millisecond after the last, from their own IP address unless told otherwise
@@ -303,25 +303,55 @@ for (const what of ["mintCode", "sendEmail"]) {
 
 // --- A re-send that doesn't go out doesn't block trying again
 {
-    const t = setup({ autoInviteLimit: 5, dailyEmailCap: 2 });
+    const t = setup({ autoInviteLimit: 5, resendDailyCap: 1 });
     await t.signUp(person(1));
-    await t.signUp(person(2));                            // the cap (2) is used up
+    await t.signUp(person(2));
+    t.clock.set("2026-12-15T23:00:00.000Z");
+    await t.signUp(person(1));                            // uses up today's re-sends (1)
+    check("a re-send goes, and counts toward today's re-sends", t.sendEmail.sent.length === 3 && t.store.counters.get("resends#2026-12-15") === 1);
+    check("...but not toward the invites' daily cap", t.store.counters.get("emails#2026-12-15") === 2);
     t.clock.set("2026-12-15T23:59:30.000Z");
-    await t.signUp(person(1));
-    check("a re-send at the cap sends nothing", t.sendEmail.sent.length === 2);
-    check("...and puts the last-emailed time back", t.store.signups.get("p1@example.org").lastEmailedAt === "2026-12-15T15:00:00.001Z", t.store.signups.get("p1@example.org").lastEmailedAt);
+    await t.signUp(person(2));
+    check("a re-send past today's re-send cap sends nothing", t.sendEmail.sent.length === 3);
+    check("...and puts the last-emailed time and re-send count back", t.store.signups.get("p2@example.org").lastEmailedAt === "2026-12-15T15:00:00.002Z" && t.store.signups.get("p2@example.org").resends === 0, t.store.signups.get("p2@example.org"));
+    check("...and is logged, but doesn't alert the team", t.log.lines.some((l) => l.includes("re-sends are used up")) && !t.log.lines.some((l) => l.includes("DAILY_EMAIL_CAP_REACHED")));
     t.clock.set("2026-12-16T00:00:30.000Z");             // a minute later, a new day
-    await t.signUp(person(1));
-    check("a minute later, after the cap resets, the re-send goes", t.sendEmail.sent.length === 3 && t.sendEmail.sent[2].to === "p1@example.org");
+    await t.signUp(person(2));
+    check("a minute later, on a new day, the re-send goes", t.sendEmail.sent.length === 4 && t.sendEmail.sent[3].to === "p2@example.org");
     t.sendEmail.fail = true;
     t.clock.set("2026-12-16T02:00:00.000Z");
-    await t.signUp(person(2));
-    check("a re-send SES refuses: logged, today's email given back, last-emailed time put back",
-        t.log.lines.some((l) => l.includes("INVITE_FAILED re-sending")) && t.store.counters.get("emails#2026-12-16") === 1 && t.store.signups.get("p2@example.org").lastEmailedAt === "2026-12-15T15:00:00.002Z");
+    t.store.counters.set("resends#2026-12-16", 0);
+    await t.signUp(person(1));
+    check("a re-send SES refuses: logged, today's re-send given back, last-emailed time and count put back",
+        t.log.lines.some((l) => l.includes("INVITE_FAILED re-sending")) && t.store.counters.get("resends#2026-12-16") === 0 && t.store.signups.get("p1@example.org").lastEmailedAt === "2026-12-15T23:00:00.001Z" && t.store.signups.get("p1@example.org").resends === 1);
     t.sendEmail.fail = false;
     t.clock.advance(60_000);
+    await t.signUp(person(1));
+    check("...a minute later, trying again sends it", t.sendEmail.sent.at(-1).to === "p1@example.org" && t.sendEmail.sent.length === 5);
+}
+
+// --- Re-sends can't use up the invites' emails, and one address is re-sent at most maxResends times
+{
+    const t = setup({ autoInviteLimit: 1, dailyEmailCap: 2, maxResends: 3 });
+    await t.signUp(person(1));
+    for (let i = 0; i < 6; i++) { t.clock.advance(2 * HOUR); await t.signUp(person(1)); }
+    check("one address is re-sent 3 times, then no more", t.sendEmail.sent.length === 4 && t.store.signups.get("p1@example.org").resends === 3);
     await t.signUp(person(2));
-    check("...a minute later, trying again sends it", t.sendEmail.sent.at(-1).to === "p2@example.org" && t.sendEmail.sent.length === 4);
+    const invited = await t.service.inviteNext({ count: 1 });
+    check("...and the invites' daily cap still has room for the next invite", invited.invited.join() === "p2@example.org" && !invited.capReached);
+}
+
+// --- The email check: plain ASCII addresses only
+{
+    const t = setup();
+    const bad = ["x<victim@example.org>", "a@b.c>", "\"a b\"@example.org", "a,b@example.org", "a;b@example.org", "(a)b@example.org", "jos\u00e9@example.org", "a@ex\u00e4mple.org", "a@example", "a@example.c"];
+    const answers = [];
+    for (const email of bad) answers.push(await t.signUp(person(1, { email })));
+    check("addresses with < > \" , ; ( ), non-ASCII or no proper domain are refused with 400", answers.every((a) => a.status === 400), bad.filter((_, i) => answers[i].status !== 400));
+    check("...and nothing is stored or sent", t.store.signups.size === 0 && t.sendEmail.sent.length === 0);
+    const good = ["a.b+tag@example.org", "o'brien@mail.example.co.uk", "A_B-C%d@Example-Mail.ORG"];
+    for (const email of good) await t.signUp(person(2, { email }));
+    check("ordinary addresses, with + . ' _ - %, are accepted (and kept lowercase)", t.store.signups.size === 3 && t.store.signups.has("a_b-c%d@example-mail.org"));
 }
 {
     const t = setup({ autoInviteLimit: 1 });

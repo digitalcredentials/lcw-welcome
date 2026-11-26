@@ -13,8 +13,7 @@ Parameters:
     Default: https://welcome.alpha.lcw.app
   RegistrationCodesUrl:
     Type: String
-    Description: lcw-back-end's POST /registration-codes (its RegistrationCodesUrl output).
-    Default: https://api.lcw-sandbox.org/registration-codes
+    Description: lcw-back-end's POST /registration-codes (its RegistrationCodesUrl output) for this environment. No default, so a deploy can't send the API key to another environment's address by mistake.
   RegistrationCodeApiKeyParameter:
     Type: String
     Description: The Parameter Store SecureString holding the API key for POST /registration-codes (the same parameter lcw-back-end checks the key against, in the same account).
@@ -37,8 +36,16 @@ Parameters:
     Default: 300
   IpHourlyLimit:
     Type: Number
-    Description: The most sign-ups accepted from one IP address in one hour.
+    Description: The most sign-ups accepted from one network in one hour (one IPv4 address, or one IPv6 /64).
     Default: 10
+  ResendDailyCap:
+    Type: Number
+    Description: The most re-sent invites in one day (UTC), from people signing up again. Kept apart from DailyEmailCap, so re-sends can't use up the emails meant for invites.
+    Default: 50
+  MaxResends:
+    Type: Number
+    Description: The most times one address's invite is re-sent, ever. Stops anyone using sign-up to email one address over and over.
+    Default: 3
   AlertEmail:
     Type: String
     Description: Who is emailed when the daily cap is reached or an invite fails. Confirm the subscription email AWS sends after the first deploy.
@@ -60,6 +67,8 @@ Globals:
         AUTO_INVITE_LIMIT: !Ref AutoInviteLimit
         DAILY_EMAIL_CAP: !Ref DailyEmailCap
         IP_HOURLY_LIMIT: !Ref IpHourlyLimit
+        RESEND_DAILY_CAP: !Ref ResendDailyCap
+        MAX_RESENDS: !Ref MaxResends
 
 Resources:
   SignupHttpApi:
@@ -89,11 +98,16 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref SignupFunctionLogGroup
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SignupsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CountersTable
         - Statement:
+            # Only what a sign-up needs: this function is public, so no scans, deletes or queries
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt SignupsTable.Arn
+                - !GetAtt CountersTable.Arn
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RegistrationCodeApiKeyParameter}
@@ -129,11 +143,18 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref InviteFunctionLogGroup
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SignupsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CountersTable
         - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt SignupsTable.Arn
+                - !GetAtt CountersTable.Arn
+            # The queue, read through the status index
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub ${SignupsTable.Arn}/index/*
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RegistrationCodeApiKeyParameter}

@@ -40,7 +40,7 @@ async function setup(suffix, overrides = {}) {
     const tables = await freshTables(suffix);
     const store = dynamoStore({ client, ...tables });
     const mintCode = fakeMinter(), sendEmail = fakeMailer(), log = quietLog(), clock = manualClock();
-    const config = { autoInviteLimit: 10, dailyEmailCap: 1000, ipHourlyLimit: 1000, resendGapMinutes: 60, maxBatch: 100, ...overrides };
+    const config = { autoInviteLimit: 10, dailyEmailCap: 1000, ipHourlyLimit: 1000, resendGapMinutes: 60, resendDailyCap: 1000, maxResends: 100, maxBatch: 100, ...overrides };
     // A small delay in minting, so requests that arrive together really overlap
     const slowMint = async (email) => { await new Promise((r) => setTimeout(r, 5)); return mintCode(email); };
     slowMint.calls = mintCode.calls;
@@ -176,14 +176,25 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     await t.service.signUp(person(1), "10.0.5.1");
     const invitedAt = (await t.store.getSignup("p1@example.org")).lastEmailedAt;
     const later = "2026-12-15T18:00:00.000Z";
-    check("markEmailed after the gap moves the time on", await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z"));
+    check("markEmailed after the gap moves the time on, and counts the re-send", await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z", 3) && (await t.store.getSignup("p1@example.org")).resends === 1);
     await t.store.unmarkEmailed("p1@example.org", "2026-12-15T19:00:00.000Z", invitedAt);
     check("unmarkEmailed with a different time does nothing", (await t.store.getSignup("p1@example.org")).lastEmailedAt === later);
     await t.store.unmarkEmailed("p1@example.org", later, invitedAt);
-    check("unmarkEmailed with its own time puts the old one back", (await t.store.getSignup("p1@example.org")).lastEmailedAt === invitedAt);
-    await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z");
+    check("unmarkEmailed with its own time puts the old one back, and uncounts the re-send", (await t.store.getSignup("p1@example.org")).lastEmailedAt === invitedAt && (await t.store.getSignup("p1@example.org")).resends === 0);
+    await t.store.markEmailed("p1@example.org", later, "2026-12-15T17:00:00.000Z", 3);
     await t.store.unmarkEmailed("p1@example.org", later, undefined);
     check("with no old time, it removes it", (await t.store.getSignup("p1@example.org")).lastEmailedAt === undefined);
+
+    // At most maxResends re-sends, even with many requests at once
+    const times = ["2026-12-16T01:00:00.000Z", "2026-12-16T03:00:00.000Z", "2026-12-16T05:00:00.000Z"];
+    for (const at of times) await t.store.markEmailed("p1@example.org", at, new Date(Date.parse(at) - 3_600_000).toISOString(), 3);
+    check("three re-sends make 3", (await t.store.getSignup("p1@example.org")).resends === 3);
+    check("a 4th is refused when maxResends is 3", !(await t.store.markEmailed("p1@example.org", "2026-12-16T09:00:00.000Z", "2026-12-16T08:00:00.000Z", 3)));
+    await t.service.signUp(person(2), "10.0.5.2");
+    await t.service.inviteNext({ count: 1 });
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+        t.store.markEmailed("p2@example.org", `2026-12-17T0${i}:00:00.000Z`, "2026-12-17T10:00:00.000Z", 2)));
+    check("10 re-sends at once with maxResends 2: exactly 2 go", results.filter(Boolean).length === 2 && (await t.store.getSignup("p2@example.org")).resends === 2, results);
 }
 
 for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark", "mark"]) {

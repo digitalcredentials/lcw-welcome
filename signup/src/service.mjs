@@ -12,14 +12,19 @@
 //   admin console) invites the next N in sign-up order.
 // - A code is made when a person is invited, by lcw-back-end's
 //   POST /registration-codes. Signing up again with the same email re-sends
-//   the same code (at most once per RESEND_GAP_MINUTES), never a new one.
-// - Misuse protection: a honeypot field, a limit per IP address per hour,
-//   one code per email, and a daily cap on emails that alerts the team
-//   (the DAILY_EMAIL_CAP_REACHED log line, which the stack alarms on).
+//   the same code (at most once per RESEND_GAP_MINUTES, MAX_RESENDS times in
+//   all), never a new one.
+// - Misuse protection: a honeypot field, a limit per network per hour, one
+//   code per email, a daily cap on invite emails that alerts the team (the
+//   DAILY_EMAIL_CAP_REACHED log line, which the stack alarms on), and a
+//   separate daily cap on re-sends, so re-sends can't use up the invites' emails.
 import { createHash } from "node:crypto";
 import { inviteEmail } from "./email.mjs";
 
-export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;   // the same check as the page's
+// The same check as the page's sign-up form. Plain ASCII addresses only: no
+// < > " , ; ( ) or spaces, which could turn one address into a display name
+// plus another address, and no non-ASCII ones, which SES may refuse.
+export const EMAIL = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
 const MAX = { name: 200, organization: 200, email: 254 };
 
 const hour = (now) => now.toISOString().slice(0, 13);   // 2026-12-15T09
@@ -50,6 +55,8 @@ export function configFromEnv(env = process.env) {
         dailyEmailCap: Number(env.DAILY_EMAIL_CAP ?? "300"),
         ipHourlyLimit: Number(env.IP_HOURLY_LIMIT ?? "10"),
         resendGapMinutes: Number(env.RESEND_GAP_MINUTES ?? "60"),
+        resendDailyCap: Number(env.RESEND_DAILY_CAP ?? "50"),
+        maxResends: Number(env.MAX_RESENDS ?? "3"),
         // An invite still unfinished after this long (a timeout, say) is tried again
         staleMinutes: Number(env.STALE_MINUTES ?? "15"),
         maxBatch: Number(env.MAX_BATCH ?? "100")
@@ -169,18 +176,26 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         if (row?.status !== "invited") return ok;
         const at = now.toISOString();
         const before = new Date(now.getTime() - config.resendGapMinutes * 60_000).toISOString();
-        if (!(await store.markEmailed(email, at, before))) return ok;   // re-sent within the gap
+        // Re-sent within the gap, or re-sent maxResends times already
+        if (!(await store.markEmailed(email, at, before, config.maxResends))) return ok;
         // If the re-send doesn't go out, undo markEmailed, so trying again later isn't blocked for the gap
         const undo = async () => {
             try { await store.unmarkEmailed(email, at, row.lastEmailedAt); } catch (error) { log.error("Couldn't undo a re-send's time:", error?.message ?? error); }
         };
-        if (!(await takeEmail(now))) { await undo(); return ok; }
+        // Re-sends have their own daily cap, apart from the invites' one, so
+        // re-sending to invited addresses can't stop invites for the day
+        const resends = `resends#${day(now)}`;
+        if (!(await store.take(resends, config.resendDailyCap, epoch(new Date(now.getTime() + 2 * 86_400_000))))) {
+            log.warn(`A re-send was refused: today's ${config.resendDailyCap} re-sends are used up`);
+            await undo();
+            return ok;
+        }
         try {
             await sendEmail({ to: email, ...inviteEmail(row) });
         } catch (error) {
             log.error("INVITE_FAILED re-sending an invite:", error?.message ?? error);
             await undo();
-            await store.giveBack(`emails#${day(now)}`).catch((e) => log.error("Couldn't give back today's email:", e?.message ?? e));
+            await store.giveBack(resends).catch((e) => log.error("Couldn't give back today's re-send:", e?.message ?? e));
         }
         return ok;
     }

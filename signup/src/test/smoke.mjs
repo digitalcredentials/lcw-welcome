@@ -33,7 +33,9 @@ const settings = {
     AUTO_INVITE_LIMIT: process.env.AUTO_INVITE_LIMIT ?? "2",
     DAILY_EMAIL_CAP: process.env.DAILY_EMAIL_CAP ?? "6",
     IP_HOURLY_LIMIT: process.env.IP_HOURLY_LIMIT ?? "8",
-    RESEND_GAP_MINUTES: process.env.RESEND_GAP_MINUTES ?? "1"
+    RESEND_GAP_MINUTES: process.env.RESEND_GAP_MINUTES ?? "1",
+    RESEND_DAILY_CAP: process.env.RESEND_DAILY_CAP ?? "4",
+    MAX_RESENDS: process.env.MAX_RESENDS ?? "2"
 };
 
 // --- Everything the handlers read, pointed at this computer. Set before they're imported.
@@ -179,7 +181,7 @@ async function control(req, res, path) {
             settings, signups, mintFails: state.mintFails, apiDown: state.apiDown, lastInvite: state.lastInvite,
             codesMade: state.codesMade, keyReads: state.keyReads,
             counts: {
-                autoInvites: n("auto-invites"), emailsToday: n(`emails#${today}`),
+                autoInvites: n("auto-invites"), emailsToday: n(`emails#${today}`), resendsToday: n(`resends#${today}`),
                 ipThisHour: counters.filter((c) => c.key.startsWith("ip#") && c.key.endsWith(`#${hour}`)).reduce((sum, c) => sum + Number(c.n), 0)
             },
             outbox: state.outbox.map(({ html, ...rest }, i) => ({ ...rest, i })),
@@ -235,7 +237,8 @@ createServer(async (req, res) => {
 }).listen(PAGE_PORT, () => {
     console.log(`\nSmoke test running. Nothing is sent anywhere.\n  The page:          ${PAGE}\n  The control panel: ${PAGE}/_smoke\n` +
         `  Settings: first ${settings.AUTO_INVITE_LIMIT} invited straight away, ${settings.DAILY_EMAIL_CAP} emails a day, ` +
-        `${settings.IP_HOURLY_LIMIT} sign-ups an hour from one network, re-send after ${settings.RESEND_GAP_MINUTES} minute(s)\n  Ctrl+C stops it.\n`);
+        `${settings.IP_HOURLY_LIMIT} sign-ups an hour from one network, re-send after ${settings.RESEND_GAP_MINUTES} minute(s), ` +
+        `${settings.RESEND_DAILY_CAP} re-sends a day, ${settings.MAX_RESENDS} per address\n  Ctrl+C stops it.\n`);
     state.log.length = 0;   // the log panel shows the service's lines, not this one
 });
 
@@ -284,7 +287,8 @@ async function refresh() {
   let s; try { s = await (await fetch("/_smoke/state")).json(); } catch { return; }
   const c = document.getElementById("counts"); c.replaceChildren(
     el("span", "Invited straight away: " + s.counts.autoInvites + " of " + s.settings.AUTO_INVITE_LIMIT),
-    el("span", "Emails today: " + s.counts.emailsToday + " of " + s.settings.DAILY_EMAIL_CAP),
+    el("span", "Invite emails today: " + s.counts.emailsToday + " of " + s.settings.DAILY_EMAIL_CAP),
+    el("span", "Re-sends today: " + s.counts.resendsToday + " of " + s.settings.RESEND_DAILY_CAP + " (" + s.settings.MAX_RESENDS + " per address)"),
     el("span", "Sign-ups from your network this hour: " + s.counts.ipThisHour + " of " + s.settings.IP_HOURLY_LIMIT),
     el("span", "Codes made: " + s.codesMade),
     el("span", "Re-send gap: " + s.settings.RESEND_GAP_MINUTES + " min"));

@@ -8,7 +8,7 @@ The back end for the welcome page's early-access form (#3, #4). It keeps the sig
 - **The first 100 sign-ups** (`AutoInviteLimit`) are invited straight away. The 100 counts people, not accounts made. If one of their invites fails, they keep their place among the 100 and stay first in the queue. They're invited when they sign up again, or by the next "invite the next N", whichever comes first, so later sign-ups can't overtake them.
 - **Everyone after that is queued.** "Invite the next N" (`lcw-welcome-invite`) invites the next N in sign-up order. The admin console runs it; there's no public route to it.
 - **Each invite** asks lcw-back-end's `POST /registration-codes` for a code, then emails the link it answers from `support@lcw.app`. The link opens the wallet's register page with the code filled in. A code is used up when an account made with it is confirmed, and works for 90 days (lcw-back-end's settings).
-- **Signing up again with the same email** re-sends the same code, at most once an hour. A new code is never made, even after the old one expires: that would let one address set up a second wallet. Someone whose code has expired emails support for a new one, as the wallet's register page already says.
+- **Signing up again with the same email** re-sends the same code, at most once an hour and 3 times in all (`MaxResends`). A new code is never made, even after the old one expires: that would let one address set up a second wallet. Someone whose code has expired emails support for a new one, as the wallet's register page already says.
 - **The invite email holds nothing typed into the form**, not even the name. Anyone can sign up any address, so anything typed there would let a stranger send their own words from support@lcw.app.
 - **Every accepted sign-up gets the same answer** (`202 { ok: true }`), so the form can't be used to find out who has signed up.
 - **If an invite fails** (making the code or sending the email), the person goes back to their place in the queue and the team is alerted. A code is kept as soon as it's made, so trying again sends that same code. If a re-send fails, or hits the daily cap, its time is undone, so signing up again later isn't blocked for an hour.
@@ -20,13 +20,19 @@ The back end for the welcome page's early-access form (#3, #4). It keeps the sig
 |---|---|---|
 | A honeypot field | | |
 | Sign-ups per network per hour: one IPv4 address, or one IPv6 /64, since an IPv6 user can switch between addresses in their /64. The page says "too many from your network" only for this limit. | `IpHourlyLimit` | 10 |
-| One code per email address | | |
-| Emails per day (UTC). Reaching it stops invites until the next day and emails `AlertEmail`. People stay queued. | `DailyEmailCap` | 300 |
+| One code per email address. Only plain ASCII addresses are accepted (no `< > " , ; ( )`, spaces or accented letters), so one address can't hide another. | | |
+| Invite emails per day (UTC). Reaching it stops invites until the next day and emails `AlertEmail`. People stay queued. | `DailyEmailCap` | 300 |
+| Re-sent invites per day (UTC), counted apart from invites, so re-sending can't stop invites. Reaching it is logged, not alerted. | `ResendDailyCap` | 50 |
+| Re-sends to one address, ever, so nobody can use sign-up to email one address over and over | `MaxResends` | 3 |
 | Requests to the whole API (API Gateway answers 429 past it, and the page shows its "try again" message) | `DefaultRouteSettings` in `template.yaml` | 10 a second, bursts of 20 |
 
 No CAPTCHA unless misuse shows up.
 
-Two limits to know about:
+Limits to know about:
+
+- **One person can take many of the first 100 places.** Addresses aren't confirmed before an invite, and `me+1@gmail.com`, `me+2@gmail.com` and any address at a catch-all domain each count as someone new. From 10 networks, a script could take all 100 within an hour and get 100 codes. A confirm-your-email step (or a CAPTCHA) would stop this; see the runbook for what to do if it happens.
+- **Invites go to unconfirmed addresses, from an AWS account shared with lcw-back-end.** Many invites to addresses that don't exist would raise SES's bounce rate. Past AWS's limits, SES can pause sending for the whole account, which would stop the wallet's own emails too. Turning on SES's account-level suppression list, and bounce and complaint alarms, guards against this.
+- **An invited address answers a little slower when it's re-sent**, since the email goes out before the answer. Someone timing answers could tell an address has been invited, at the cost of emailing that person (3 times at most).
 
 - **The whole-API limit is shared.** A script sending more than 10 requests a second slows sign-up for everyone while it runs. AWS WAF can't be attached to an HTTP API, so the fix, if it happens, is a REST API with WAF rate rules, or a CAPTCHA.
 - **A code can be made but never sent.** If lcw-back-end makes a code but its answer is lost (a timeout, say), the next try makes another. The first is never sent to anyone and is 16 random characters, so it can't be used in practice; it just sits unused in the coupons table. lcw-back-end could stop this by answering the same code for the same `issuedTo`.
@@ -65,7 +71,7 @@ The page's side is tested with the rest of the page (`npm test` at the top of th
 - **The page:** http://localhost:4600. Sign up as you would.
 - **The control panel:** http://localhost:4600/_smoke. It shows the table, every email SES was asked to send (open one to see it as it would arrive), and the log, with the lines that alert the team in red. Its buttons run "invite the next N" (and its dry run), make code-making fail, take the sign-up API down, and reset everything.
 
-Its settings are small, so each rule shows up within a few sign-ups: 2 invited straight away, 6 emails a day, 8 sign-ups an hour from one network, and a re-send after 1 minute. Each can be changed, for example `AUTO_INVITE_LIMIT=5 npm run smoke`. Ctrl+C stops it and removes its Docker container.
+Its settings are small, so each rule shows up within a few sign-ups: 2 invited straight away, 6 invite emails a day, 8 sign-ups an hour from one network, a re-send after 1 minute, 4 re-sends a day, and 2 re-sends per address. Each can be changed, for example `AUTO_INVITE_LIMIT=5 npm run smoke`. Ctrl+C stops it and removes its Docker container.
 
 ## Deploy
 
@@ -80,13 +86,17 @@ sam build
 sam deploy --guided   # once; it asks for each parameter and saves the answers to samconfig.toml
 ```
 
-Parameters to check: `AllowedOrigins` (the welcome page's real address), `RegistrationCodesUrl` (lcw-back-end's `RegistrationCodesUrl` output for that environment), and `AlertEmail`. After the first deploy, confirm the subscription email AWS sends to `AlertEmail`.
+Parameters to check: `AllowedOrigins` (the welcome page's real address), `RegistrationCodesUrl` (lcw-back-end's `RegistrationCodesUrl` output for that environment; it has no default, so it can't point at the wrong environment by mistake), and `AlertEmail`. After the first deploy, confirm the subscription email AWS sends to `AlertEmail`.
 
 Then build the page with the stack's `SignupUrl` output:
 
 ```bash
 SIGNUP_API=<SignupUrl> npm run build
 ```
+
+## Running it
+
+[RUNBOOK.md](RUNBOOK.md) covers the checks before launch, inviting the next group, what to do for each alert, answering people who write in, and turning sign-up off.
 
 ## Inviting the next group
 

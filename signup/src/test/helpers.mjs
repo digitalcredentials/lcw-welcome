@@ -36,16 +36,19 @@ export function memoryStore() {
             Object.assign(row, { status: "invited", invitedAt: at, lastEmailedAt: at });
             delete row.claimedAt;
         },
-        async markEmailed(email, at, before) {
+        async markEmailed(email, at, before, maxResends) {
             const row = signups.get(email);
             if (row?.status !== "invited" || (row.lastEmailedAt && !(row.lastEmailedAt < before))) return false;
+            if ((row.resends ?? 0) >= maxResends) return false;
             row.lastEmailedAt = at;
+            row.resends = (row.resends ?? 0) + 1;
             return true;
         },
         async unmarkEmailed(email, at, previous) {
             const row = signups.get(email);
             if (row?.lastEmailedAt !== at) return;
             if (previous) row.lastEmailedAt = previous; else delete row.lastEmailedAt;
+            row.resends = (row.resends ?? 0) - 1;
         },
         async listQueued(limit, staleBefore) {
             return [...signups.values()].filter((r) => r.status === "queued" || (r.status === "inviting" && r.claimedAt < staleBefore)).sort((a, b) => a.signedUpAt.localeCompare(b.signedUpAt)).slice(0, limit).map(copy);
