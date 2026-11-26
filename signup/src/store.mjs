@@ -3,7 +3,7 @@
 // other (the condition on each write) are in one place.
 //
 // Sign-ups table, one row per email address (lowercased):
-//   email, name, organization, signedUpAt, status, autoInvite, and once invited:
+//   email, name, organization, signedUpAt, status, autoInvite, decidedBy, and once invited:
 //   code, link, expiresAt (the code's), invitedAt, lastEmailedAt, resends
 //   (re-sends so far), and failures (invites that failed, if any)
 // status is "queued" (waiting), "inviting" (an invite is being sent right
@@ -83,14 +83,15 @@ export function dynamoStore({
         },
 
         // Records whether a sign-up has one of the first-N places (1) or not (0),
-        // once: refused if the row isn't there or already has an answer
-        async markAutoInvite(email, value) {
+        // once: refused if the row isn't there or already has an answer.
+        // decidedBy (the deciding request's token) shows whose answer it is.
+        async markAutoInvite(email, value, token) {
             await client.send(new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
-                UpdateExpression: "SET autoInvite = :value",
+                UpdateExpression: "SET autoInvite = :value, decidedBy = :token",
                 ConditionExpression: "attribute_exists(email) AND attribute_not_exists(autoInvite)",
-                ExpressionAttributeValues: { ":value": N(value) }
+                ExpressionAttributeValues: { ":value": N(value), ":token": S(token) }
             }));
         },
 

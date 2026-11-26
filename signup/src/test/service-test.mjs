@@ -350,9 +350,9 @@ for (const what of ["mintCode", "sendEmail"]) {
     for (const email of bad) answers.push(await t.signUp(person(1, { email })));
     check("addresses with < > \" , ; ( ), non-ASCII, no proper domain, or dots and hyphens where SES refuses them, are refused with 400", answers.every((a) => a.status === 400), bad.filter((_, i) => answers[i].status !== 400));
     check("...and nothing is stored or sent", t.store.signups.size === 0 && t.sendEmail.sent.length === 0);
-    const good = ["a.b+tag@example.org", "o'brien@mail.example.co.uk", "A_B-C%d@Example-Mail.ORG"];
+    const good = ["a.b+tag@example.org", "o'brien@mail.example.co.uk", "A_B-C%d@Example-Mail.ORG", "o&neill@example.org", "user@example.xn--p1ai"];
     for (const email of good) await t.signUp(person(2, { email }));
-    check("ordinary addresses, with + . ' _ - %, are accepted (and kept lowercase)", t.store.signups.size === 3 && t.store.signups.has("a_b-c%d@example-mail.org"));
+    check("ordinary addresses, with + . ' _ - % &, and international domains in xn-- form, are accepted (and kept lowercase)", t.store.signups.size === good.length && t.store.signups.has("a_b-c%d@example-mail.org"));
 }
 {
     const t = setup({ autoInviteLimit: 1 });
@@ -460,12 +460,12 @@ for (const what of ["mintCode", "sendEmail"]) {
     const t = setup({ autoInviteLimit: 0 });
     await t.signUp(person(1));
     t.mintCode.fail = true;
-    for (const status of [500, 503, 401, 403, 429, 408]) { t.mintCode.status = status; await t.service.inviteNext({ count: 1 }); }
+    for (const status of [500, 503, 401, 403, 404, 409, 429, 408]) { t.mintCode.status = status; await t.service.inviteNext({ count: 1 }); }
     t.mintCode.fail = false;
     t.sendEmail.fail = true;
     for (const name of ["MessageRejected", "SendingPausedException", "TooManyRequestsException", "TimeoutError"]) { t.sendEmail.errorName = name; await t.service.inviteNext({ count: 1 }); }
     const row = t.store.signups.get("p1@example.org");
-    check("an outage, a bad key, throttling or a timeout never sets anyone aside", row.status === "queued" && row.failures === undefined, row);
+    check("an outage, a bad key, a wrong URL, a duplicate, throttling or a timeout never sets anyone aside", row.status === "queued" && row.failures === undefined, row);
 }
 {
     const t = setup({ autoInviteLimit: 1 });
@@ -481,11 +481,55 @@ for (const what of ["mintCode", "sendEmail"]) {
     const t = setup({ autoInviteLimit: 2 });
     let left = 17_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
-    check("with under 18 seconds left, no code is made: back in the queue, email given back, not counted against them",
-        t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 && t.log.lines.some((l) => l.includes("not enough time left")));
+    check("with under 18 seconds left, no code is made: back in the queue, no email counted, not counted against them, and no alert",
+        t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 &&
+        t.log.lines.some((l) => l.startsWith("warn") && l.includes("not enough time left")) && !t.log.lines.some((l) => l.includes("INVITE_FAILED")));
     left = 19_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
     check("...with enough, the first-N person signing up again is invited", t.store.signups.get("p1@example.org").status === "invited");
+}
+
+{
+    const t = setup({ autoInviteLimit: 0 });
+    for (let i = 1; i <= 5; i++) await t.signUp(person(i));
+    t.sendEmail.fail = (m) => ["p1@example.org", "p2@example.org", "p3@example.org"].includes(m.to);
+    t.sendEmail.errorName = "BadRequestException";
+    const answer = await t.service.inviteNext({ count: 5 });
+    check("3 refused addresses in a row don't stop the run (SES is working; it's the addresses)", answer.stoppedOnFailures === false && answer.invited.join() === "p4@example.org,p5@example.org" && answer.failed.length === 3);
+}
+{
+    const t = setup({ autoInviteLimit: 1 });
+    await t.signUp(person(1));
+    t.clock.advance(2 * HOUR);
+    t.sendEmail.fail = true;
+    t.sendEmail.errorName = "TimeoutError";
+    await t.signUp(person(1));
+    const row = t.store.signups.get("p1@example.org");
+    check("a re-send that timed out (SES may have sent it) stays counted, for the address and the day", row.resends === 1 && row.lastEmailedAt === t.clock().toISOString() && t.store.counters.get("resends#2026-12-15") === 1);
+}
+{
+    // Two requests deciding the same place at once (possible only after an earlier error cut one short)
+    const t = setup({ autoInviteLimit: 3 });
+    const markAutoInvite = t.store.markAutoInvite;
+    t.store.markAutoInvite = async () => { throw new Error("throttled"); };
+    try { await t.signUp(person(1)); } catch { /* the first request fails */ }
+    t.store.markAutoInvite = markAutoInvite;
+    t.clock.advance(60_000);
+    const answers = await Promise.allSettled([t.service.signUp(person(1), "10.0.0.1"), t.service.signUp(person(1), "10.0.0.1")]);
+    check("two requests deciding one place at once: both 202, one place taken, one invite", answers.every((a) => a.value?.status === 202) && t.store.counters.get("auto-invites") === 1 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
+}
+
+{
+    // Recording the place lands but its answer is lost, and the check that follows fails too: the place is
+    // kept, since giving it back could put two people in one place
+    const t = setup({ autoInviteLimit: 3 });
+    const markAutoInvite = t.store.markAutoInvite, getSignup = t.store.getSignup;
+    t.store.markAutoInvite = async (...args) => { await markAutoInvite(...args); throw new Error("timed out"); };
+    t.store.getSignup = async () => { throw new Error("throttled"); };
+    try { await t.signUp(person(1)); } catch { /* 500 */ }
+    t.store.markAutoInvite = markAutoInvite;
+    t.store.getSignup = getSignup;
+    check("a place whose recording can't be checked is kept, not given back", t.store.counters.get("auto-invites") === 1 && t.store.signups.get("p1@example.org").autoInvite === 1);
 }
 
 // --- No email addresses in the logs

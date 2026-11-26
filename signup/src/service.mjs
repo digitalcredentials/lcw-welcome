@@ -22,15 +22,16 @@
 //   code per email, a daily cap on invite emails that alerts the team (the
 //   DAILY_EMAIL_CAP_REACHED log line, which the stack alarms on), and a
 //   separate daily cap on re-sends, so re-sends can't use up the invites' emails.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { inviteEmail } from "./email.mjs";
 
 // The same check as the page's sign-up form. Plain ASCII addresses only: no
 // < > " , ; ( ) or spaces, which could turn one address into a display name
-// plus another address, and no non-ASCII ones, which SES may refuse. No dot
-// at the start or end of the part before the @, or two dots in a row, and no
-// hyphen at the start or end of a domain name's parts: SES refuses those.
-export const EMAIL = /^[A-Za-z0-9_%+'-]+(?:\.[A-Za-z0-9_%+'-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/;
+// plus another address, and no non-ASCII ones, which SES may refuse
+// (international domains in their xn-- form are fine). No dot at the start or
+// end of the part before the @, or two dots in a row, and no hyphen at the
+// start or end of a domain name's parts: SES refuses those.
+export const EMAIL = /^[A-Za-z0-9_%+'!#$&*=?^{|}~-]+(?:\.[A-Za-z0-9_%+'!#$&*=?^{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,}|xn--[A-Za-z0-9-]+)$/;
 const MAX = { name: 200, organization: 200, email: 254 };
 
 const hour = (now) => now.toISOString().slice(0, 13);   // 2026-12-15T09
@@ -49,19 +50,17 @@ const NEEDS_TO_MINT_MS = 18_000, NEEDS_TO_SEND_MS = 7_000;
 
 // Whether an invite's error is about the person's address, so it counts
 // against them: SES refusing the request as invalid, or lcw-back-end refusing
-// it (a 4xx other than ones about the key or load). Outages, throttling and
-// timeouts aren't the person's doing.
+// what was sent (400 or 422). Anything else, such as an outage, throttling, a
+// timeout, a wrong URL (404) or a bad key (401, 403), isn't the person's doing.
 function aboutTheAddress(error) {
-    if (error?.name === "BadRequestException") return true;
-    const status = error?.status;
-    return status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status);
+    return error?.name === "BadRequestException" || error?.status === 400 || error?.status === 422;
 }
 // A send that gave up waiting: SES may have sent it
 const mayHaveGone = (error) => error?.name === "TimeoutError" || error?.name === "AbortError";
 
 // An error as one line for the logs, with any email address taken out (SES's
 // errors can name the recipient). With stack, the stack trace too.
-const ADDRESS = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const ADDRESS = /[A-Za-z0-9._%+'!#$&*=?^{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 export function describeError(error, { stack = false } = {}) {
     const text = error instanceof Error ? (stack && error.stack) || `${error.name}: ${error.message}` : String(error);
     return text.replace(ADDRESS, "[an address]");
@@ -126,8 +125,9 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
     // Invites one sign-up: makes their code (or reuses the one made by an
     // earlier try), emails it, records it. Answers "invited", "skipped" (not
     // waiting for an invite, or someone else is inviting it right now), "cap"
-    // (today's emails are used up) or "failed". If the invite doesn't go out,
-    // the sign-up goes back in the queue in its old place. Throws only if the
+    // (today's emails are used up), "refused" (SES or lcw-back-end refused the
+    // address), "late" (not enough time left to start it) or "failed". If the
+    // invite doesn't go out, the sign-up goes back in the queue in its old place. Throws only if the
     // claim itself fails, before anything has changed (or, rarely, with the
     // row claimed, which is then tried again once stale). timeLeft() is the
     // function's time left; it isn't started without enough for each step.
@@ -136,6 +136,11 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         const claimedAt = now.toISOString();
         const row = await store.claim(email, claimedAt, staleBefore(now));
         if (!row) return "skipped";
+        if (timeLeft() < (row.code ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
+            log.warn("An invite wasn't started: not enough time left in this request. The person keeps their place; it's tried again later");
+            await putBack(email, now, claimedAt, { emailTaken: false });
+            return "late";
+        }
         // From here on, any error puts the sign-up back, so it's never left "inviting"
         let emailTaken = false;
         let step = "counting today's emails";
@@ -146,10 +151,6 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             }
             emailTaken = true;
             let codes = row.code ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
-            if (timeLeft() < (codes ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
-                step = "waiting";
-                throw new Error("not enough time left in this request; it's tried again later");
-            }
             if (!codes) {
                 step = "making the code";
                 const made = await mintCode(email);
@@ -169,7 +170,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             const unsure = step === "sending the email" && mayHaveGone(error);
             if (unsure) log.warn("The invite may have gone anyway; trying again may send it twice");
             await putBack(email, now, claimedAt, { emailTaken: emailTaken && !unsure, failed, giveUp });
-            return "failed";
+            return failed ? "refused" : "failed";
         }
         try {
             await store.markInvited(email, claimedAt, claimedAt);
@@ -183,27 +184,31 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
 
     // Decides whether a new sign-up gets one of the first-N places, records the
     // answer on the row (autoInvite 1 or 0), and if it's yes, invites them.
+    // The answer is recorded once; `token` tells this request's answer from
+    // another's, if two decide at once (only possible after an earlier error).
     async function decidePlace(email, timeLeft) {
-        if (!(await store.take("auto-invites", config.autoInviteLimit))) {
-            await store.markAutoInvite(email, 0);
-            return;
-        }
+        const placed = await store.take("auto-invites", config.autoInviteLimit);
+        const token = `${clock().toISOString()}#${randomUUID()}`;
         try {
-            await store.markAutoInvite(email, 1);
+            await store.markAutoInvite(email, placed ? 1 : 0, token);
         } catch (error) {
-            // Give the place back only if the row shows it wasn't recorded. If
-            // that can't be told, keep it: one place unused beats two people in it.
+            // Did it land? (Its answer may have been lost, or another request decided first.)
+            // If that can't be told, keep any place taken: one place unused beats two people in it.
             const row = await store.getSignup(email).catch(() => null);
-            if (row && row.autoInvite === undefined) await store.giveBack("auto-invites").catch(() => {});
-            throw error;
+            if (row?.decidedBy !== token) {
+                if (placed && row) await store.giveBack("auto-invites").catch(() => {});
+                if (row?.autoInvite !== undefined) return;   // another request decided it; theirs stands
+                throw error;
+            }
         }
-        await inviteOne(email, timeLeft);
+        if (placed) await inviteOne(email, timeLeft);
     }
 
     // One sign-up from the page. Answers { status, body } for the HTTP response.
     // Every accepted sign-up gets the same answer, so the page can't be used to
-    // learn whether an address has signed up before. timeLeft() is the
-    // function's time left.
+    // learn whether an address has signed up before. (The one exception, a 503
+    // while that address's own sign-up is still being handled, lasts about a
+    // second, or 30 seconds after an error.) timeLeft() is the function's time left.
     async function signUp(input, ip, timeLeft = () => Infinity) {
         const ok = { status: 202, body: { ok: true } };
         if (typeof input !== "object" || input === null) return { status: 400, body: { error: "Send a JSON object." } };
@@ -274,6 +279,11 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             await sendEmail({ to: email, ...inviteEmail(row) });
         } catch (error) {
             log.error("INVITE_FAILED re-sending an invite:", describeError(error));
+            // If SES may have sent it, it stays counted, so the re-send limits are never passed
+            if (taken && mayHaveGone(error)) {
+                log.warn("The re-send may have gone anyway, so it stays counted");
+                return ok;
+            }
             await undo();
             if (taken) await store.giveBack(resends).catch((e) => log.error("Couldn't give back today's re-send:", describeError(e)));
         }
@@ -308,6 +318,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             }
             if (result === "cap") { results.capReached = true; break; }
             results[result === "invited" ? "invited" : result === "skipped" ? "skipped" : "failed"].push(person.email);
+            // An address refused is about that address, not a sign that lcw-back-end or SES is down
             failedInARow = result === "failed" ? failedInARow + 1 : 0;
             if (failedInARow >= FAILURES_IN_A_ROW && i < people.length - 1) {
                 log.error(`INVITE_FAILED: ${FAILURES_IN_A_ROW} invites failed in a row, so inviting stopped; lcw-back-end or SES is probably down`);

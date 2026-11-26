@@ -173,13 +173,13 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
 {
     const t = await setup("mark", { autoInviteLimit: 0 });
     await t.store.createSignup({ email: "p1@example.org", name: "P1", signedUpAt: "2026-12-15T15:00:00.000Z" });
-    await t.store.markAutoInvite("p1@example.org", 1);
-    check("markAutoInvite records the place", (await t.store.getSignup("p1@example.org")).autoInvite === 1);
+    await t.store.markAutoInvite("p1@example.org", 1, "first");
+    check("markAutoInvite records the place, and whose answer it is", (await t.store.getSignup("p1@example.org")).autoInvite === 1 && (await t.store.getSignup("p1@example.org")).decidedBy === "first");
     let again = false;
-    try { await t.store.markAutoInvite("p1@example.org", 0); } catch (e) { again = e.name === "ConditionalCheckFailedException"; }
-    check("...once: a second answer is refused and the first kept", again && (await t.store.getSignup("p1@example.org")).autoInvite === 1);
+    try { await t.store.markAutoInvite("p1@example.org", 0, "second"); } catch (e) { again = e.name === "ConditionalCheckFailedException"; }
+    check("...once: a second answer is refused and the first kept", again && (await t.store.getSignup("p1@example.org")).autoInvite === 1 && (await t.store.getSignup("p1@example.org")).decidedBy === "first");
     let refused = false;
-    try { await t.store.markAutoInvite("nobody@example.org", 1); } catch (e) { refused = e.name === "ConditionalCheckFailedException"; }
+    try { await t.store.markAutoInvite("nobody@example.org", 1, "x"); } catch (e) { refused = e.name === "ConditionalCheckFailedException"; }
     check("...and is refused for an address that hasn't signed up (no row made)", refused && (await t.store.getSignup("nobody@example.org")) === null);
     await t.service.signUp(person(2), "10.0.6.2");
     check("a sign-up after the first N has autoInvite 0", (await t.store.getSignup("p2@example.org")).autoInvite === 0);

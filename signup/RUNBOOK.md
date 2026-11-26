@@ -105,7 +105,7 @@ aws dynamodb query --table-name lcw-welcome-signups --index-name status-index \
   --expression-attribute-values '{":f":{"S":"failed"}}'
 ```
 
-If the address looks wrong, leave it, or remove it (see "Removing someone"). If the problem has been fixed (lcw-back-end refused it by mistake, say), put it back in the queue in its old place; the next "invite the next N" tries it first:
+If the address looks wrong, leave it, or remove it (see "Removing someone"). If the problem has been fixed (lcw-back-end refused it by mistake, say), put it back in the queue, in its old place by sign-up time:
 
 ```bash
 aws dynamodb update-item --table-name lcw-welcome-signups --key '{"email":{"S":"person@example.org"}}' \

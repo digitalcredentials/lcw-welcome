@@ -12,10 +12,11 @@ export function memoryStore() {
             signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }) });
             return true;
         },
-        async markAutoInvite(email, value) {
+        async markAutoInvite(email, value, token) {
             const row = signups.get(email);
-            if (!row || row.autoInvite !== undefined) throw new Error("ConditionalCheckFailed");
+            if (!row || row.autoInvite !== undefined) throw Object.assign(new Error("ConditionalCheckFailed"), { name: "ConditionalCheckFailedException" });
             row.autoInvite = value;
+            row.decidedBy = token;
         },
         async claim(email, at, staleBefore) {
             const row = signups.get(email);

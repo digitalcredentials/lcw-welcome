@@ -123,6 +123,8 @@ createServer(async (req, res) => {
         if (state.mintFails) return send(res, 500, { message: "Internal server error" });
         const { issuedTo } = JSON.parse(body);
         if (typeof issuedTo !== "string" || !issuedTo) return send(res, 400, { message: "issuedTo is required" });
+        // An address starting "refused" is refused, to show what happens to one lcw-back-end won't take
+        if (issuedTo.startsWith("refused")) return send(res, 400, { message: "issuedTo was refused" });
         const code = `LCW-SMOKE-${String(++state.codesMade).padStart(4, "0")}`;
         return send(res, 201, { code, link: `${PAGE}/_wallet/#/register?code=${code}`, expiresAt: new Date(Date.now() + 90 * 86_400_000).toISOString() });
     }
@@ -238,7 +240,8 @@ createServer(async (req, res) => {
     console.log(`\nSmoke test running. Nothing is sent anywhere.\n  The page:          ${PAGE}\n  The control panel: ${PAGE}/_smoke\n` +
         `  Settings: first ${settings.AUTO_INVITE_LIMIT} invited straight away, ${settings.DAILY_EMAIL_CAP} emails a day, ` +
         `${settings.IP_HOURLY_LIMIT} sign-ups an hour from one network, re-send after ${settings.RESEND_GAP_MINUTES} minute(s), ` +
-        `${settings.RESEND_DAILY_CAP} re-sends a day, ${settings.MAX_RESENDS} per address\n  Ctrl+C stops it.\n`);
+        `${settings.RESEND_DAILY_CAP} re-sends a day, ${settings.MAX_RESENDS} per address\n` +
+        `  An address starting "refused" (refused1@example.org, say) is refused by the stand-in lcw-back-end.\n  Ctrl+C stops it.\n`);
     state.log.length = 0;   // the log panel shows the service's lines, not this one
 });
 
@@ -298,7 +301,7 @@ async function refresh() {
   document.getElementById("api").className = s.apiDown ? "bad" : "";
   document.getElementById("last").textContent = s.lastInvite ? "Last \\"invite the next N\\": " + JSON.stringify(s.lastInvite) : "";
   table(document.getElementById("signups"), ["Signed up", "Email", "Name", "Organization", "Status", "Code", "Invited", "Last emailed"],
-    s.signups.map((r) => [time(r.signedUpAt), r.email, r.name, r.organization, el("span", r.status, r.status === "invited" ? "ok" : r.status === "inviting" ? "warn" : r.status === "failed" ? "bad" : ""), r.code, time(r.invitedAt), time(r.lastEmailedAt)]));
+    s.signups.map((r) => [time(r.signedUpAt), r.email, r.name, r.organization, el("span", r.status + (r.failures ? " (refused " + r.failures + "x)" : ""), r.status === "invited" ? "ok" : r.status === "inviting" ? "warn" : r.status === "failed" ? "bad" : ""), r.code, time(r.invitedAt), time(r.lastEmailedAt)]));
   table(document.getElementById("outbox"), ["Sent", "From", "To", "Subject", "Open"],
     s.outbox.slice().reverse().map((m) => { const a = el("a", "Open the email"); a.href = "/_smoke/email/" + m.i; a.target = "_blank"; return [time(m.at), m.from, m.to, m.subject, a]; }));
   const log = document.getElementById("log"); log.replaceChildren();
