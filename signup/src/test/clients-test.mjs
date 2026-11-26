@@ -4,6 +4,7 @@ import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { mockClient } from "aws-sdk-client-mock";
 import { apiKeyReader, codeMinter, sesMailer } from "../clients.mjs";
+import { dynamoStore, tableClient } from "../store.mjs";
 import { checker } from "./helpers.mjs";
 
 const { check, done } = checker();
@@ -78,6 +79,24 @@ const { check, done } = checker();
     const took = Date.now() - started;
     // service.mjs treats these two names as "SES may have sent it"
     check("a send SES never answers fails after the time limit, as an AbortError or TimeoutError", ["AbortError", "TimeoutError"].includes(error?.name) && took >= 250 && took < 3000, { took, error: error?.name });
+    sockets.forEach((socket) => socket.destroy());
+    server.close();
+}
+
+// --- A stalled table call gives up too, after its tries
+{
+    const { createServer } = await import("node:net");
+    const sockets = [];
+    const server = createServer((socket) => sockets.push(socket));   // accepts, never answers
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const client = tableClient({ endpoint: `http://127.0.0.1:${server.address().port}`, requestTimeout: 300, region: "us-east-1", credentials: { accessKeyId: "x", secretAccessKey: "x" } });
+    const store = dynamoStore({ client, signupsTable: "s", countersTable: "c" });
+    const started = Date.now();
+    let error;
+    const tooLong = new Promise((resolve) => setTimeout(resolve, 5000).unref());
+    try { await Promise.race([store.getSignup("a@example.org"), tooLong]); } catch (e) { error = e; }
+    const took = Date.now() - started;
+    check("a table call that's never answered fails after 2 tries of the time limit each", error !== undefined && took >= 550 && took < 3000 && sockets.length === 2, { took, tries: sockets.length, error: error?.name });
     sockets.forEach((socket) => socket.destroy());
     server.close();
 }

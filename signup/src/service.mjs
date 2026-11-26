@@ -14,9 +14,10 @@
 //   POST /registration-codes. Signing up again with the same email re-sends
 //   the same code (at most once per RESEND_GAP_MINUTES, MAX_RESENDS times in
 //   all), never a new one.
-// - An invite SES refuses MAX_FAILURES times because of the address is set
-//   aside as "failed", out of the queue, so one bad address can't sit at the
-//   front of it for ever. Outages don't count.
+// - An invite SES refuses MAX_FAILURES times in "invite the next N" runs is
+//   set aside as "failed", out of the queue, so one bad address can't sit at
+//   the front of it for ever. Outages don't count, and a run stops after 3
+//   failures in a row, so a setup mistake sets aside 3 people a run at most.
 //   RUNBOOK.md says how to put it back.
 // - Misuse protection: a honeypot field, a limit per network per hour, one
 //   code per email, a daily cap on invite emails that alerts the team (the
@@ -45,8 +46,9 @@ const FAILURES_IN_A_ROW = 3;
 // after this long was cut short by an error.
 const UNDECIDED_AFTER_MS = 30_000;
 // Time an invite needs, so it isn't cut off by the function's Timeout partway:
-// the API key (3 s), making the code (8 s), sending (5 s), and a margin
-const NEEDS_TO_MINT_MS = 18_000, NEEDS_TO_SEND_MS = 7_000;
+// the API key (3 s), making the code (8 s), sending (5 s), and a margin for
+// the table writes either side (each 2 s at most a try, store.mjs)
+const NEEDS_TO_MINT_MS = 20_000, NEEDS_TO_SEND_MS = 9_000;
 
 // Whether a send's error is about the person's address, so it counts against
 // them: SES refusing the request as invalid. lcw-back-end's errors never are
@@ -124,19 +126,21 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
     // Invites one sign-up: makes their code (or reuses the one made by an
     // earlier try), emails it, records it. Answers "invited", "skipped" (not
     // waiting for an invite, or someone else is inviting it right now), "cap"
-    // (today's emails are used up), "refused" (SES or lcw-back-end refused the
-    // address), "late" (not enough time left to start it) or "failed". If the
+    // (today's emails are used up), "refused" (SES refused the address),
+    // "late" (not enough time left to start it) or "failed". If the
     // invite doesn't go out, the sign-up goes back in the queue in its old place. Throws only if the
     // claim itself fails, before anything has changed (or, rarely, with the
     // row claimed, which is then tried again once stale). timeLeft() is the
     // function's time left; it isn't started without enough for each step.
-    async function inviteOne(email, timeLeft = () => Infinity) {
+    // With countRefusals, SES refusing the address counts toward setting it
+    // aside ("invite the next N" only, which stops after 3 failures in a row).
+    async function inviteOne(email, timeLeft = () => Infinity, { countRefusals = false } = {}) {
         const now = clock();
         const claimedAt = now.toISOString();
         const row = await store.claim(email, claimedAt, staleBefore(now));
         if (!row) return "skipped";
         if (timeLeft() < (row.code && !expired(row.expiresAt, now) ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
-            log.warn("An invite wasn't started: not enough time left in this request. The person keeps their place; it's tried again later");
+            log.error("INVITE_FAILED: an invite wasn't started, as there wasn't enough time left in this request. The person keeps their place; run \"invite the next N\" to invite them");
             await putBack(email, now, claimedAt, { emailTaken: false });
             return "late";
         }
@@ -162,15 +166,16 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             await sendEmail({ to: email, ...inviteEmail(codes) });
         } catch (error) {
             log.error(`INVITE_FAILED for a sign-up (${step}):`, describeError(error));
-            // Only SES or lcw-back-end refusing this address counts against the person
-            const failed = step === "sending the email" && aboutTheAddress(error);
+            // Only SES refusing this address counts against the person
+            const refused = step === "sending the email" && aboutTheAddress(error);
+            const failed = refused && countRefusals;
             const giveUp = failed && (row.failures ?? 0) + 1 >= config.maxFailures;
             if (giveUp) log.error(`INVITE_FAILED: a sign-up's address has been refused ${config.maxFailures} times, so it's set aside as "failed" and left out of the queue until it's put back (RUNBOOK.md)`);
             // If SES may have sent it, today's email stays counted, so the cap is never passed
             const unsure = step === "sending the email" && mayHaveGone(error);
             if (unsure) log.warn("The invite may have gone anyway; trying again may send it twice");
             await putBack(email, now, claimedAt, { emailTaken: emailTaken && !unsure, failed, giveUp });
-            return failed ? "refused" : "failed";
+            return refused ? "refused" : "failed";
         }
         try {
             await store.markInvited(email, claimedAt, claimedAt);
@@ -315,7 +320,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             if (timeLeft() < 30_000) { results.stoppedEarly = true; break; }
             let result;
             try {
-                result = await inviteOne(person.email, timeLeft);
+                result = await inviteOne(person.email, timeLeft, { countRefusals: true });
             } catch (error) {
                 // One person's error doesn't stop the rest, and the answer still says who was invited
                 log.error("INVITE_FAILED: couldn't start an invite:", describeError(error));

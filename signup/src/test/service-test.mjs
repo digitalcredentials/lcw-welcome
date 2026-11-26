@@ -485,12 +485,12 @@ for (const what of ["mintCode", "sendEmail"]) {
 }
 {
     const t = setup({ autoInviteLimit: 2 });
-    let left = 17_000;
+    let left = 19_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
-    check("with under 18 seconds left, no code is made: back in the queue, no email counted, not counted against them, and no alert",
+    check("with under 20 seconds left, no code is made: back in the queue, no email counted, not counted against them, and the team is alerted to invite them",
         t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 &&
-        t.log.lines.some((l) => l.startsWith("warn") && l.includes("not enough time left")) && !t.log.lines.some((l) => l.includes("INVITE_FAILED")));
-    left = 19_000;
+        t.log.lines.some((l) => l.startsWith("error INVITE_FAILED") && l.includes("enough time left")));
+    left = 21_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
     check("...with enough, the first-N person signing up again is invited", t.store.signups.get("p1@example.org").status === "invited");
 }
@@ -539,6 +539,18 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.store.markAutoInvite = markAutoInvite;
     t.store.getSignup = getSignup;
     check("a place whose recording can't be checked is kept, not given back", t.store.counters.get("auto-invites") === 1 && t.store.signups.get("p1@example.org").autoInvite === 1);
+}
+
+{
+    // On the sign-up path there's no "3 in a row" stop, so a refusal there isn't counted (a setup
+    // mistake could otherwise set aside everyone who signs up)
+    const t = setup({ autoInviteLimit: 3 });
+    t.sendEmail.fail = true;
+    t.sendEmail.errorName = "BadRequestException";
+    await t.signUp(person(1));
+    for (let i = 0; i < 4; i++) { t.clock.advance(HOUR); await t.signUp(person(1)); }
+    const row = t.store.signups.get("p1@example.org");
+    check("SES refusing a first-N address when they sign up (and again) doesn't count against them", row.status === "queued" && row.failures === undefined && row.autoInvite === 1);
 }
 
 // --- No email addresses in the logs

@@ -53,8 +53,8 @@ The answer lists who was invited and anyone who failed. `capReached` means it st
 | Alert | What it means | What to do |
 |---|---|---|
 | `lcw-welcome-daily-email-cap-reached` | Today's emails (UTC) reached `DailyEmailCap`. No more invites go out until tomorrow (UTC). Nobody is lost: they stay queued, and anyone among the first 100 keeps their place. | Look at today's sign-ups. **If they look real**, raise `DailyEmailCap` (redeploy) or wait for tomorrow, then run "invite the next N". **If they look like junk**, see "A flood of junk sign-ups". |
-| `lcw-welcome-signup-problems` | An invite failed, or a sign-up did. The person is back in their place in the queue, unless their invite has now failed 3 times. | Read the log (below). **"(making the code)"** means lcw-back-end's `/registration-codes` is failing: tell James. **"(sending the email)"** means SES is failing: check SES in the console (sending paused, a quota, the domain). **"3 invites failed in a row"** means one of those is down or set up wrong (SES refusing every address, say: check `FromEmail`). Once fixed, run "invite the next N"; the people who failed go first. **"set aside as failed"** means SES refused one address 3 times: see "Failed sign-ups". |
-| `lcw-welcome-signup-function-errors` / `lcw-welcome-invite-function-errors` | A function crashed or timed out. | Read its log. An invite cut off partway is finished by the next "invite the next N" after 15 minutes, with the code already made. |
+| `lcw-welcome-signup-problems` | An invite failed, or a sign-up did. The person is back in their place in the queue, unless their invite has now failed 3 times. | Read the log (below). **"(making the code)"** means lcw-back-end's `/registration-codes` is failing: tell James. **"(sending the email)"** means SES is failing: check SES in the console (sending paused, a quota, the domain). **"3 invites failed in a row"** means one of those is down or set up wrong (SES refusing every address, say: check `FromEmail`). Once fixed, run "invite the next N"; the people who failed go first. **"set aside as failed"** means SES refused one address 3 times: see "Failed sign-ups". **"not enough time left"** means a sign-up's request was too slow to start its invite: they keep their place; run "invite the next N" to invite them. Often, DynamoDB or lcw-back-end is slow. |
+| `lcw-welcome-signup-function-errors` / `lcw-welcome-invite-function-errors` | A function crashed or timed out. | Read its log. An invite cut off partway can be finished after 15 minutes, by the next "invite the next N" (run it) or by the person signing up again, with the code already made. |
 
 Reading the logs:
 
@@ -67,7 +67,6 @@ The logs hold no names or emails, so match a failure to a person by its time in 
 
 Warnings that don't alert, worth a look if they're frequent:
 
-- **"not enough time left"**: a sign-up's request was too slow to start an invite. The person keeps their place, and is invited when they sign up again or by the next "invite the next N". Many of these mean DynamoDB or lcw-back-end is slow.
 - **"that sign-up's code has expired"**: someone invited over 90 days ago signed up again. Nothing was sent; see "My code expired" below.
 
 Re-sends have their own daily cap (`ResendDailyCap`, 50), which doesn't alert. A log line "A re-send was refused: today's re-sends are used up" means people signing up again didn't get their email that day. Many of these in one day is a sign of misuse, not real demand.
@@ -82,7 +81,7 @@ aws dynamodb get-item --table-name lcw-welcome-signups --key '{"email":{"S":"per
 
 - **`queued`:** they haven't been invited yet. They're emailed when their group is let in.
 - **`invited`:** ask them to check spam. Signing up again on the page re-sends the same code, once an hour, up to 3 times (`resends` on the row counts them). After that, or if re-sends for the day are used up, send them the `link` from their row by hand. It's their own code, so nothing new is made.
-- **`inviting`:** an invite is in progress or was cut off. It's finished within 15 minutes, by the next "invite the next N" or by them signing up again.
+- **`inviting`:** an invite is in progress or was cut off. After 15 minutes it can be finished: run "invite the next N", or ask them to sign up again.
 - **`failed`:** their invite failed 3 times. See "Failed sign-ups".
 - **Not found:** they didn't sign up with that address (or a typo). They can sign up again.
 
@@ -102,7 +101,7 @@ If they were invited, ask James to remove the codes issued to their address in l
 
 ## Failed sign-ups
 
-When SES refuses an address 3 times, its sign-up is set aside as `failed`, so it doesn't hold up the queue. Outages don't count toward this. To list them:
+When SES refuses an address 3 times in "invite the next N" runs, its sign-up is set aside as `failed`, so it doesn't hold up the queue. Outages don't count toward this. SES gives the same refusal for a bad sender address, so if several are set aside at once with "3 invites failed in a row", check `FromEmail`, fix it, and put them all back. To list them:
 
 ```bash
 aws dynamodb query --table-name lcw-welcome-signups --index-name status-index \
