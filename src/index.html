@@ -7,6 +7,19 @@
 <meta name="robots" content="noindex">
 <title>Learner Credential Wallet Alpha</title>
 <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<script>
+/* A link ending in #feedback goes to the feedback page, keeping ?from= ("link" when there's none). It runs here in
+   <head>, so the welcome page doesn't show first. The feedback page itself (data-feedback-page) stays put. */
+var LCW_LEAVING = false;   // true once this redirect is under way: later scripts then leave the address alone
+function lcwToFeedback(){
+  if(location.hash!=='#feedback' || document.documentElement.hasAttribute('data-feedback-page')) return;
+  var q=new URLSearchParams(location.search); if(!q.get('from')) q.set('from','link');
+  q.delete('ref');   // the feedback page makes its own
+  LCW_LEAVING = true;
+  location.replace('feedback/?'+q.toString());
+}
+lcwToFeedback();
+</script>
 <style>
 /* Figtree, served from this site (fonts/, with its license, OFL.txt) rather than Google Fonts, so the page asks nothing of
    Google on load. Same files and ranges as Google Fonts serves: one variable font for 400-800, an italic for 400. */
@@ -413,10 +426,9 @@ ol.steps span{color:var(--ink-2)}
 /* feedback page, at /feedback: a short page that sends people to Google Forms in a new tab, so it's clear their feedback
    goes to Google (Legal asked that it not look like a form on this site). The welcome page's Share feedback links open it,
    and so does the wallet, with ?from=wallet. */
-.tool-links .linkish{display:inline-block;padding-block:10px;font-weight:inherit}
 .fbp{display:none}
-body.fbp-on main > *:not(.fbp),body.fbp-on .site-nav,body.fbp-on .mobile-menu{display:none!important}
-body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
+[data-feedback-page] main > *:not(.fbp),[data-feedback-page] .site-nav,[data-feedback-page] .mobile-menu{display:none!important}  /* the build marks the /feedback copy, so this applies before any script runs */
+[data-feedback-page] .fbp{display:block;background:var(--wash);padding-block:40px 64px}
 .fbp-card{max-width:38rem;margin:0 auto;background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:14px}
 .fbp-card [hidden]{display:none}
 .fbp-h{font-size:var(--step-2);margin:0}
@@ -426,7 +438,7 @@ body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
 .fbp-actions .btn{gap:8px}
 .fbp-card .fine b{color:var(--ink);font-weight:600}
 .ext{flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-@media (max-width:520px){body.fbp-on .fbp{padding-block:16px 40px}.fbp-card{padding:20px 16px}.fbp-actions .btn{flex:1 1 100%}}
+@media (max-width:520px){[data-feedback-page] .fbp{padding-block:16px 40px}.fbp-card{padding:20px 16px}.fbp-actions .btn{flex:1 1 100%}}
 
 /* footer */
 .site-footer{border-top:1px solid var(--rule);background:var(--paper)}
@@ -510,13 +522,13 @@ body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
       <h1 class="fbp-h" id="fbp-h" tabindex="-1">Share feedback</h1>
       <p>Tell us what worked, what didn't, and what confused you. Please don't include passwords or other private details.</p>
       <p><span data-ph="feedback-google">We collect feedback with Google Forms, which opens in a new tab. Google's terms of service and privacy policy apply there.</span></p>
-      <p class="fbp-ref">Your reference: <b id="fb-ref">FB-······</b></p>
+      <p class="fbp-ref" id="fbp-ref" hidden>Your reference: <b id="fb-ref">FB-······</b></p>
       <div class="fbp-actions">
-        <a class="btn btn-primary" id="fb-main" href="https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform" target="_blank" rel="noopener" aria-describedby="fb-auto">Open the feedback form<span class="sr-only"> (opens Google Forms in a new tab)</span><svg class="ext" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-primary" id="fb-main" href="https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform" target="_blank" rel="noopener">Open the feedback form<span class="sr-only"> (opens Google Forms in a new tab)</span><svg class="ext" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
         <a class="btn btn-secondary" id="fb-up" href="https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform" target="_blank" rel="noopener" aria-describedby="fb-up-hint">Add screenshots<span class="sr-only"> (opens Google Forms in a new tab)</span><svg class="ext" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
       </div>
-      <p class="fine" id="fb-auto">The feedback form opens with your reference, where you came from, and your browser and device details (<b id="fb-device">your browser</b>) already filled in. You can see and change them on the form before you send it.</p>
-      <p class="fine" id="fb-up-hint">Screenshots are optional. Add them on a separate Google form, which opens with the same reference. You'll need to sign in with a Google account, and Google shares that account's name and email with us. <span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></p>
+      <p class="fine" id="fb-auto" hidden>The feedback form opens with your reference, where you came from, and your browser and device details (<b id="fb-device">your browser</b>) already filled in. You can see and change them on the form before you send it.</p>
+      <p class="fine" id="fb-up-hint">Screenshots are optional. Add them on a separate Google form<span id="fb-up-same" hidden>, which opens with the same reference</span>. You'll need to sign in with a Google account, and Google shares that account's name and email with us. <span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></p>
       <p class="fine" id="fbp-wallet" hidden>When you're done, you can close this tab and go back to the wallet.</p>
     </div></div>
   </section>
@@ -934,18 +946,21 @@ body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
 </footer>
 
 <script>
-/* Always open at the top, even when the link ends in a section anchor like #idea.
-   The anchor is kept in LCW_START_HASH first, so a link ending in #feedback can still open the feedback page. */
+/* A link ending in a section anchor like #idea opens at the top, not at the anchor. With no anchor, the browser keeps its
+   usual scroll, so Back from /feedback returns to where the tester was; once the jump to the top is done, scroll
+   restoration goes back to normal for the same reason.
+   The anchor is kept in LCW_START_HASH first, so a #faq-<question> link can still open its answer.
+   Not while the #feedback redirect in <head> is under way: changing the address then could cancel it. */
 var LCW_START_HASH = location.hash;
 (function(){
+  if(!location.hash || LCW_LEAVING) return;
   try { history.scrollRestoration = 'manual'; } catch(e){}
-  if(!location.hash) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
   function top(){
     var h = document.documentElement, s = h.style.scrollBehavior;
     h.style.scrollBehavior = 'auto'; window.scrollTo(0,0); h.style.scrollBehavior = s;
   }
-  top(); window.addEventListener('load', function(){ top(); setTimeout(top, 0); });
+  top(); window.addEventListener('load', function(){ top(); setTimeout(function(){ top(); try { history.scrollRestoration = 'auto'; } catch(e){} }, 0); });
 })();
 (function(){
   // Phones: the menu button shows the section links under the header (same behavior as dccommons.org)
@@ -1082,7 +1097,8 @@ var LCW_START_HASH = location.hash;
    only makes the two links. Each visit gets a fresh reference (FB-XXXXXX), filled in on both forms so the team can
    match screenshots to their feedback. The main form also opens with the browser and device details and where the
    tester came from ("Feedback page", plus ?from=, e.g. "Feedback page: wallet"); the tester can change any of them.
-   On the welcome page, a link ending in #feedback (with any ?from=) goes to the page.
+   The reference is kept in the address (?ref=), so a reload, or Back to this tab, shows the same one; a new visit
+   gets a new one. On the welcome page, a link ending in #feedback goes to the page (lcwToFeedback, in <head>).
    Entry ids come from each form's "Get pre-filled link". */
 var FEEDBACK_FORM = {
   url: "https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform",
@@ -1095,13 +1111,7 @@ var UPLOAD_FORM = {
 };
 (function(){
   var onPage=document.documentElement.hasAttribute('data-feedback-page');
-  if(!onPage){
-    /* the welcome page: #feedback goes to the feedback page, keeping ?from= */
-    function toPage(){ if(location.hash==='#feedback') location.replace('feedback/'+location.search); }
-    if(LCW_START_HASH==='#feedback') location.replace('feedback/'+location.search);
-    window.addEventListener('hashchange', toPage);
-    return;
-  }
+  if(!onPage){ window.addEventListener('hashchange', lcwToFeedback); return; }   // the welcome page
   var h=document.getElementById('fbp-h'), main=document.getElementById('fb-main'), up=document.getElementById('fb-up');
   function param(){ var f=null; try { f=new URLSearchParams(location.search).get('from'); } catch(e){} return f; }
   function newRef(){ var c='23456789ABCDEFGHJKMNPQRSTUVWXYZ', a=new Uint32Array(6), r='FB-';
@@ -1116,15 +1126,27 @@ var UPLOAD_FORM = {
   }
   function prefill(url, pairs){ var q=new URLSearchParams(); q.append('usp','pp_url');
     pairs.forEach(function(p){ if(p[0]) q.append(p[0], p[1]); }); return url+'?'+q.toString(); }
-  var dev=device(), ref=newRef(), from=param(), E=FEEDBACK_FORM.entries;
+  /* One visit, one reference: send more than one report from a visit and they share it. The reference in the address
+     is kept on a reload or Back/Forward (and so in a duplicated or restored tab, which browsers count as Back/Forward).
+     A bookmarked, autocompleted or shared address is a new visit, so it gets a new one. */
+  var nav=''; try { nav=performance.getEntriesByType('navigation')[0].type; } catch(e){}
+  if(!nav){ try { nav=['navigate','reload','back_forward'][performance.navigation.type]||''; } catch(e){} }   // older Safari
+  var dev=device(), from=param(), E=FEEDBACK_FORM.entries, q=new URLSearchParams(location.search), ref=q.get('ref');
+  if(!(nav==='reload' || nav==='back_forward') || !/^FB-[2-9A-HJKMNP-Z]{6}$/.test(ref||'')){   // the letters newRef uses
+    ref=newRef(); q.set('ref', ref);
+    try { history.replaceState(null, '', location.pathname+'?'+q.toString()+location.hash); } catch(e){}
+  }
   document.getElementById('fb-device').textContent=dev;
   document.getElementById('fb-ref').textContent=ref;
-  main.href=prefill(FEEDBACK_FORM.url, [[E.reference, ref], [E.device, dev+' | '+navigator.userAgent+' | '+innerWidth+'x'+innerHeight], [E.source, 'Feedback page'+(from?': '+from:'')]]);
+  function setMain(){ main.href=prefill(FEEDBACK_FORM.url, [[E.reference, ref], [E.device, dev+' | '+navigator.userAgent+' | '+innerWidth+'x'+innerHeight], [E.source, 'Feedback page'+(from?': '+from:'')]]); }
+  setMain(); window.addEventListener('resize', setMain);   // so the window size is the one in use when the form is opened
   up.href=prefill(UPLOAD_FORM.url, [[UPLOAD_FORM.reference, ref]]);
   document.getElementById('fbp-wallet').hidden = from!=='wallet';
-  document.body.classList.add('fbp-on');
-  document.title='Share feedback · '+document.title;
-  document.querySelector('.site-header .brand').setAttribute('href','../');   // the logo goes back to the welcome page, one folder up
+  document.getElementById('fbp-ref').hidden = !(E.reference || UPLOAD_FORM.reference);   // only when a form gets it
+  document.getElementById('fb-up-same').hidden = !(E.reference && UPLOAD_FORM.reference);
+  var all = !!(E.reference && E.device && E.source);   // say what's filled in only when it's all sent
+  document.getElementById('fb-auto').hidden = !all;
+  if(all) main.setAttribute('aria-describedby', 'fb-auto');
   h.focus({preventScroll:true});
   /* #feedback here keeps you on this page */
   window.addEventListener('hashchange', function(){ if(location.hash==='#feedback'){ try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} h.focus(); } });
