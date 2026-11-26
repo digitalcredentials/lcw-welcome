@@ -61,12 +61,14 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("the auto-invite count is exactly 10", (await t.store.count("auto-invites")) === 10);
     check("today's email count is exactly 10", (await t.store.count("emails#2026-12-15")) === 10);
 
-    // Two admins press "invite the next 15" at once. Both see the same 15, so 15 are invited between them, each once.
+    // Two admins press "invite the next 15" at once. Nobody is invited twice, whatever the order.
+    // (Usually both see the same 15 and split them; if one finishes before the other reads the
+    // queue, the other rightly invites the 5 left.)
     const [a, b] = await Promise.all([t.service.inviteNext({ count: 15 }), t.service.inviteNext({ count: 15 })]);
     const after = await statuses(t.store, 30);
-    check("two runs at once: 15 more invited, nobody twice", after.filter((s) => s === "invited").length === 25 && t.sendEmail.sent.length === 25 && new Set(t.sendEmail.sent.map((m) => m.to)).size === 25, { a, b });
-    check("...the runs split them: 15 invited between them, 15 skipped", a.invited.length + b.invited.length === 15 && a.skipped.length + b.skipped.length === 15);
-    check("...and 5 are still queued", after.filter((s) => s === "queued").length === 5);
+    const both = a.invited.concat(b.invited), to = t.sendEmail.sent.map((m) => m.to);
+    check("two runs at once: nobody invited or emailed twice", new Set(both).size === both.length && new Set(to).size === to.length && to.length === 10 + both.length, { a, b });
+    check("...at least the 15 they both saw are invited, and the table agrees", both.length >= 15 && after.filter((s) => s === "invited").length === 10 + both.length && after.filter((s) => s === "queued").length === 20 - both.length);
 }
 
 // --- One person presses Send ten times at once
@@ -132,7 +134,14 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     const later = await t.service.inviteNext({ count: 3, dryRun: true });
     check("15 minutes later, the queue lists it first, in its place", later.wouldInvite.map((p) => p.email).join() === "p1@example.org,p2@example.org,p3@example.org");
     const [a, b] = await Promise.all([t.service.inviteNext({ count: 1 }), t.service.inviteNext({ count: 1 })]);
-    check("two runs at once finish it once, with the code it already had", t.sendEmail.sent.length === 1 && t.sendEmail.sent[0].text.includes("LCW-KEPT") && t.mintCode.calls.length === 0 && a.invited.length + b.invited.length === 1);
+    // Whichever order the two runs happen in, the stuck one is finished once, with its code.
+    // (If one run finishes before the other reads the queue, the other rightly invites the next person.)
+    const toP1 = t.sendEmail.sent.filter((m) => m.to === "p1@example.org");
+    const to = t.sendEmail.sent.map((m) => m.to);
+    check("two runs at once finish it once, with the code it already had",
+        toP1.length === 1 && toP1[0].text.includes("LCW-KEPT") && !t.mintCode.calls.includes("p1@example.org") &&
+        new Set(to).size === to.length && a.invited.length + b.invited.length === to.length && a.invited.concat(b.invited).includes("p1@example.org"),
+        { to, minted: t.mintCode.calls, a, b });
     const row = await t.store.getSignup("p1@example.org");
     check("...and it ends invited, with no claim left", row.status === "invited" && row.code === "LCW-KEPT" && row.claimedAt === undefined);
 }
