@@ -93,8 +93,9 @@ Resources:
       FunctionName: lcw-welcome-signup
       Description: The welcome page's sign-up form (POST /signup)
       Handler: signup.handler
-      # Long enough to make a code and send an email for one sign-up
-      Timeout: 20
+      # Long enough to make a code and send an email for one sign-up (service.mjs
+      # checks for 18 seconds left first), and under the page's 30-second wait
+      Timeout: 25
       LoggingConfig:
         LogGroup: !Ref SignupFunctionLogGroup
       Policies:

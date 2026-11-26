@@ -70,12 +70,12 @@ export function memoryStore() {
 }
 
 // A code minter that answers like POST /registration-codes, or fails when told to
-// (fail = true, or a function of the email that answers true to fail for it)
+// (fail = true, or a function of the email that answers true to fail for it), answering `status` (500)
 export function fakeMinter() {
     let n = 0;
     const minter = async (email) => {
         minter.calls.push(email);
-        if (typeof minter.fail === "function" ? minter.fail(email) : minter.fail) throw new Error("POST /registration-codes answered 500");
+        if (typeof minter.fail === "function" ? minter.fail(email) : minter.fail) throw Object.assign(new Error(`POST /registration-codes answered ${minter.status ?? 500}`), { status: minter.status ?? 500 });
         n++;
         const code = `LCW-TEST${String(n).padStart(12, "0")}`;
         return { code, link: `https://wallet.example.org/#/register?code=${code}`, expiresAt: minter.expiresAt ?? "2027-03-01T00:00:00.000Z" };
@@ -84,10 +84,11 @@ export function fakeMinter() {
     return minter;
 }
 
-// A mailer that keeps what it's sent, or fails when told to (fail = true, or a function of the message)
+// A mailer that keeps what it's sent, or fails when told to (fail = true, or a function of the
+// message) with an error named `errorName` (MessageRejected)
 export function fakeMailer() {
     const mailer = async (message) => {
-        if (typeof mailer.fail === "function" ? mailer.fail(message) : mailer.fail) throw new Error(`MessageRejected: Email address is not verified: ${message.to}`);
+        if (typeof mailer.fail === "function" ? mailer.fail(message) : mailer.fail) throw Object.assign(new Error(`Email address is not verified: ${message.to}`), { name: mailer.errorName ?? "MessageRejected" });
         mailer.sent.push(message);
     };
     mailer.sent = [];

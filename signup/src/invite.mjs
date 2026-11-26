@@ -6,9 +6,10 @@
 //   a count that isn't a whole number from 1 to MAX_BATCH -> { error }, with nothing invited.
 //   The caller must check for error: it's an answer, not a failed invocation, so it doesn't alarm.
 // "Invite the next N" can invite a few fewer than N, if someone in the queue was
-// invited a moment before (the queue's index lags a little); they're counted as
-// skipped. It doesn't top up from further down the queue, so pressing the button
-// twice by mistake doesn't invite twice as many.
+// invited a moment before (the queue's index lags a little; they're counted as
+// skipped), or signed up seconds ago. It doesn't top up from further down the
+// queue, so two runs at once don't invite twice as many. A second run after the
+// first has finished invites the next N, as asked.
 // It stops early if the daily email cap is reached, the function is about to
 // time out, or 3 invites fail in a row (lcw-back-end or SES is probably down);
 // whoever is left stays queued.

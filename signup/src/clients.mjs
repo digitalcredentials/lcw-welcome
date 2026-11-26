@@ -14,7 +14,7 @@ export function apiKeyReader({ name = process.env.API_KEY_PARAMETER, ssm = new S
     let cached, cachedAt = 0;
     return async () => {
         if (!cached || Date.now() - cachedAt > KEY_CACHE_MS) {
-            const { Parameter } = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+            const { Parameter } = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }), { abortSignal: AbortSignal.timeout(3000) });
             if (!Parameter?.Value) throw new Error("The API key parameter is empty");
             cached = Parameter.Value;
             cachedAt = Date.now();
@@ -32,7 +32,7 @@ export function codeMinter({ url = process.env.REGISTRATION_CODES_URL, apiKey, f
             body: JSON.stringify({ issuedTo: email }),
             signal: AbortSignal.timeout(timeoutMs)
         });
-        if (response.status !== 201) throw new Error(`POST /registration-codes answered ${response.status}`);
+        if (response.status !== 201) throw Object.assign(new Error(`POST /registration-codes answered ${response.status}`), { status: response.status });
         const { code, link, expiresAt } = await response.json();
         if (typeof code !== "string" || typeof link !== "string") throw new Error("POST /registration-codes answered without a code and link");
         return { code, link, expiresAt };

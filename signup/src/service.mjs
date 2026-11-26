@@ -14,9 +14,10 @@
 //   POST /registration-codes. Signing up again with the same email re-sends
 //   the same code (at most once per RESEND_GAP_MINUTES, MAX_RESENDS times in
 //   all), never a new one.
-// - An invite that fails MAX_FAILURES times (making the code or sending the
-//   email) is set aside as "failed", out of the queue, so one bad address
-//   can't sit at the front of it for ever. RUNBOOK.md says how to put it back.
+// - An invite refused MAX_FAILURES times because of the address (by SES or
+//   lcw-back-end) is set aside as "failed", out of the queue, so one bad
+//   address can't sit at the front of it for ever. Outages don't count.
+//   RUNBOOK.md says how to put it back.
 // - Misuse protection: a honeypot field, a limit per network per hour, one
 //   code per email, a daily cap on invite emails that alerts the team (the
 //   DAILY_EMAIL_CAP_REACHED log line, which the stack alarms on), and a
@@ -38,9 +39,25 @@ const epoch = (date) => Math.floor(date.getTime() / 1000);
 
 // "Invite the next N" stops after this many failures in a row: lcw-back-end or SES is probably down
 const FAILURES_IN_A_ROW = 3;
-// A new sign-up's first-N place is decided within the request (20 seconds at
-// most). One still undecided after this long was cut short by an error.
-const UNDECIDED_AFTER_MS = 60_000;
+// A new sign-up's first-N place is decided within its request, which the
+// function's Timeout (25 seconds, template.yaml) ends. One still undecided
+// after this long was cut short by an error.
+const UNDECIDED_AFTER_MS = 30_000;
+// Time an invite needs, so it isn't cut off by the function's Timeout partway:
+// the API key (3 s), making the code (8 s), sending (5 s), and a margin
+const NEEDS_TO_MINT_MS = 18_000, NEEDS_TO_SEND_MS = 7_000;
+
+// Whether an invite's error is about the person's address, so it counts
+// against them: SES refusing the request as invalid, or lcw-back-end refusing
+// it (a 4xx other than ones about the key or load). Outages, throttling and
+// timeouts aren't the person's doing.
+function aboutTheAddress(error) {
+    if (error?.name === "BadRequestException") return true;
+    const status = error?.status;
+    return status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status);
+}
+// A send that gave up waiting: SES may have sent it
+const mayHaveGone = (error) => error?.name === "TimeoutError" || error?.name === "AbortError";
 
 // An error as one line for the logs, with any email address taken out (SES's
 // errors can name the recipient). With stack, the stack trace too.
@@ -112,8 +129,9 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
     // (today's emails are used up) or "failed". If the invite doesn't go out,
     // the sign-up goes back in the queue in its old place. Throws only if the
     // claim itself fails, before anything has changed (or, rarely, with the
-    // row claimed, which is then tried again once stale).
-    async function inviteOne(email) {
+    // row claimed, which is then tried again once stale). timeLeft() is the
+    // function's time left; it isn't started without enough for each step.
+    async function inviteOne(email, timeLeft = () => Infinity) {
         const now = clock();
         const claimedAt = now.toISOString();
         const row = await store.claim(email, claimedAt, staleBefore(now));
@@ -128,6 +146,10 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             }
             emailTaken = true;
             let codes = row.code ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
+            if (timeLeft() < (codes ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
+                step = "waiting";
+                throw new Error("not enough time left in this request; it's tried again later");
+            }
             if (!codes) {
                 step = "making the code";
                 const made = await mintCode(email);
@@ -139,11 +161,14 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             await sendEmail({ to: email, ...inviteEmail(codes) });
         } catch (error) {
             log.error(`INVITE_FAILED for a sign-up (${step}):`, describeError(error));
-            // Only lcw-back-end or SES failing counts against the person; a table error isn't theirs
-            const failed = step === "making the code" || step === "sending the email";
+            // Only SES or lcw-back-end refusing this address counts against the person
+            const failed = (step === "making the code" || step === "sending the email") && aboutTheAddress(error);
             const giveUp = failed && (row.failures ?? 0) + 1 >= config.maxFailures;
-            if (giveUp) log.error(`INVITE_FAILED: a sign-up's invite has failed ${config.maxFailures} times, so it's set aside as "failed" and left out of the queue until it's put back (RUNBOOK.md)`);
-            await putBack(email, now, claimedAt, { emailTaken, failed, giveUp });
+            if (giveUp) log.error(`INVITE_FAILED: a sign-up's address has been refused ${config.maxFailures} times, so it's set aside as "failed" and left out of the queue until it's put back (RUNBOOK.md)`);
+            // If SES may have sent it, today's email stays counted, so the cap is never passed
+            const unsure = step === "sending the email" && mayHaveGone(error);
+            if (unsure) log.warn("The invite may have gone anyway; trying again may send it twice");
+            await putBack(email, now, claimedAt, { emailTaken: emailTaken && !unsure, failed, giveUp });
             return "failed";
         }
         try {
@@ -158,7 +183,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
 
     // Decides whether a new sign-up gets one of the first-N places, records the
     // answer on the row (autoInvite 1 or 0), and if it's yes, invites them.
-    async function decidePlace(email) {
+    async function decidePlace(email, timeLeft) {
         if (!(await store.take("auto-invites", config.autoInviteLimit))) {
             await store.markAutoInvite(email, 0);
             return;
@@ -172,13 +197,14 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             if (row && row.autoInvite === undefined) await store.giveBack("auto-invites").catch(() => {});
             throw error;
         }
-        await inviteOne(email);
+        await inviteOne(email, timeLeft);
     }
 
     // One sign-up from the page. Answers { status, body } for the HTTP response.
     // Every accepted sign-up gets the same answer, so the page can't be used to
-    // learn whether an address has signed up before.
-    async function signUp(input, ip) {
+    // learn whether an address has signed up before. timeLeft() is the
+    // function's time left.
+    async function signUp(input, ip, timeLeft = () => Infinity) {
         const ok = { status: 202, body: { ok: true } };
         if (typeof input !== "object" || input === null) return { status: 400, body: { error: "Send a JSON object." } };
         // The honeypot: a field people never see, so only a bot fills it in. It gets the usual answer.
@@ -204,7 +230,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         if (await store.createSignup({ email, name, organization, signedUpAt: now.toISOString() })) {
             // Only a new sign-up takes a first-N place. The row records it before the invite, so if the
             // invite fails they keep the place and stay first in the queue (see the top of this file).
-            await decidePlace(email);
+            await decidePlace(email, timeLeft);
             return ok;
         }
 
@@ -212,13 +238,15 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         // invite failed, or one that got stuck), or re-send their code if they've been invited
         const row = await store.getSignup(email);
         if ((row?.status === "queued" && row.autoInvite) || (row?.status === "inviting" && row.claimedAt < staleBefore(now))) {
-            await inviteOne(email);
+            await inviteOne(email, timeLeft);
             return ok;
         }
-        // An error cut their first try short before their first-N place was decided: decide it now.
-        // (Not straight away, so the same form sent twice at once doesn't take two places.)
-        if (row?.status === "queued" && row.autoInvite === undefined && Date.parse(row.signedUpAt) < now.getTime() - UNDECIDED_AFTER_MS) {
-            await decidePlace(email);
+        // Their first-N place isn't decided yet. Either their first request is still running (the
+        // form sent twice at once), so ask them to try again shortly, or an error cut it short, so
+        // decide it now. Deciding it straight away would let the same form sent twice take two places.
+        if (row?.status === "queued" && row.autoInvite === undefined) {
+            if (Date.parse(row.signedUpAt) > now.getTime() - UNDECIDED_AFTER_MS) return { status: 503, body: { error: "Sign-up is busy. Please try again in a minute." } };
+            await decidePlace(email, timeLeft);
             return ok;
         }
         if (row?.status !== "invited") return ok;
@@ -260,7 +288,10 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         if (!Number.isInteger(count) || count < 1 || count > config.maxBatch) {
             return { error: `count must be a whole number from 1 to ${config.maxBatch}` };
         }
-        const queued = await store.listQueued(count, staleBefore(clock()));
+        const now = clock();
+        // Leaves out a brand-new sign-up whose own request is still deciding its first-N place (and may invite it)
+        const queued = (await store.listQueued(count, staleBefore(now)))
+            .filter((r) => !(r.status === "queued" && r.autoInvite === undefined && Date.parse(r.signedUpAt) > now.getTime() - UNDECIDED_AFTER_MS));
         const people = queued.map(({ email, name, organization, signedUpAt }) => ({ email, name, organization, signedUpAt }));
         if (dryRun) return { dryRun: true, wouldInvite: people };
         const results = { invited: [], skipped: [], failed: [], capReached: false, stoppedEarly: false, stoppedOnFailures: false };
@@ -269,7 +300,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             if (timeLeft() < 30_000) { results.stoppedEarly = true; break; }
             let result;
             try {
-                result = await inviteOne(person.email);
+                result = await inviteOne(person.email, timeLeft);
             } catch (error) {
                 // One person's error doesn't stop the rest, and the answer still says who was invited
                 log.error("INVITE_FAILED: couldn't start an invite:", describeError(error));

@@ -3,7 +3,8 @@
 // the limits in service.mjs are what protect it.
 // Body: { name, email, organization?, website? }, where website is the honeypot.
 // Answers 202 { ok: true } for every accepted sign-up, 400 or 429 with
-// { error }, or 500 if something failed (nothing is lost: trying again is safe).
+// { error }, 503 if the same sign-up is still being handled, or 500 if
+// something failed (nothing is lost: trying again is safe).
 import { dynamoStore } from "./store.mjs";
 import { apiKeyReader, codeMinter, sesMailer } from "./clients.mjs";
 import { configFromEnv, makeService, describeError } from "./service.mjs";
@@ -21,7 +22,7 @@ const json = (statusCode, body) => ({
     body: JSON.stringify(body)
 });
 
-export const handler = async (event) => {
+export const handler = async (event, context) => {
     let input;
     try {
         const raw = event.isBase64Encoded ? Buffer.from(event.body ?? "", "base64").toString("utf8") : event.body;
@@ -30,7 +31,7 @@ export const handler = async (event) => {
         return json(400, { error: "Send a JSON object." });
     }
     try {
-        const { status, body } = await service.signUp(input, event.requestContext?.http?.sourceIp);
+        const { status, body } = await service.signUp(input, event.requestContext?.http?.sourceIp, () => context?.getRemainingTimeInMillis?.() ?? Infinity);
         return json(status, body);
     } catch (error) {
         console.error("SIGNUP_FAILED:", describeError(error, { stack: true }));

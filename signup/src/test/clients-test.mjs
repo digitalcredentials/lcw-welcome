@@ -76,7 +76,8 @@ const { check, done } = checker();
     const tooLong = new Promise((resolve) => setTimeout(resolve, 3000).unref());
     try { await Promise.race([send({ to: "ann@example.org", subject: "S", text: "T", html: "H" }), tooLong]); } catch (e) { error = e; }
     const took = Date.now() - started;
-    check("a send SES never answers fails after the time limit", error !== undefined && took >= 250 && took < 3000, { took, error: error?.name });
+    // service.mjs treats these two names as "SES may have sent it"
+    check("a send SES never answers fails after the time limit, as an AbortError or TimeoutError", ["AbortError", "TimeoutError"].includes(error?.name) && took >= 250 && took < 3000, { took, error: error?.name });
     sockets.forEach((socket) => socket.destroy());
     server.close();
 }

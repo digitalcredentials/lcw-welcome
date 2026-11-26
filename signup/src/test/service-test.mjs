@@ -369,8 +369,8 @@ for (const what of ["mintCode", "sendEmail"]) {
 {
     const t = setup({ autoInviteLimit: 3 });
     const answers = await Promise.allSettled([1, 2, 3].map(() => t.service.signUp(person(1), "10.0.0.1")));
-    check("the same sign-up sent 3 times at once: all get 202, and one place, one code, one email",
-        answers.every((a) => a.value?.status === 202) && t.store.counters.get("auto-invites") === 1 && t.mintCode.calls.length === 1 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
+    check("the same sign-up sent 3 times at once: one place, one code, one email; the others are asked to try again in a minute",
+        answers[0].value?.status === 202 && answers.every((a) => [202, 503].includes(a.value?.status)) && t.store.counters.get("auto-invites") === 1 && t.mintCode.calls.length === 1 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
 }
 
 // --- A sign-up cut short before its first-N place was decided gets it decided when they try again
@@ -382,12 +382,14 @@ for (const what of ["mintCode", "sendEmail"]) {
     try { await t.signUp(person(1)); } catch { threw = true; }
     t.store.markAutoInvite = markAutoInvite;
     check("cut short: the request fails, the row is there with no answer, and the place is given back", threw && t.store.signups.get("p1@example.org").autoInvite === undefined && t.store.counters.get("auto-invites") === 0);
+    t.clock.advance(10_000);
+    const soon = await t.signUp(person(1));
+    check("trying again within 30 seconds is asked to try again in a minute (its first request could still be running)", soon.status === 503 && t.store.signups.get("p1@example.org").autoInvite === undefined && t.sendEmail.sent.length === 0);
+    const dry = await t.service.inviteNext({ count: 5, dryRun: true });
+    check("...and \"invite the next N\" leaves it to that request for now", dry.wouldInvite.length === 0);
     t.clock.advance(30_000);
     await t.signUp(person(1));
-    check("trying again within a minute does nothing yet (it could be the same form sent twice)", t.store.signups.get("p1@example.org").autoInvite === undefined && t.sendEmail.sent.length === 0);
-    t.clock.advance(60_000);
-    await t.signUp(person(1));
-    check("trying again after a minute gives them their first-N place and invites them", t.store.signups.get("p1@example.org").autoInvite === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.store.counters.get("auto-invites") === 1);
+    check("trying again after that gives them their first-N place and invites them", t.store.signups.get("p1@example.org").autoInvite === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.store.counters.get("auto-invites") === 1);
 }
 {
     const t = setup({ autoInviteLimit: 1 });
@@ -404,6 +406,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     const t = setup({ autoInviteLimit: 0 });
     for (let i = 1; i <= 3; i++) await t.signUp(person(i));
     t.sendEmail.fail = (m) => m.to === "p1@example.org";
+    t.sendEmail.errorName = "BadRequestException";   // SES refusing the address
     await t.service.inviteNext({ count: 1 });
     await t.service.inviteNext({ count: 1 });
     check("after 2 failures, it's still queued, first, with 2 failures counted", t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === 2);
@@ -442,6 +445,47 @@ for (const what of ["mintCode", "sendEmail"]) {
     check("...and the rest aren't tried, so nothing is counted against them", [4, 5].every((i) => t.store.signups.get(`p${i}@example.org`).status === "queued" && t.store.signups.get(`p${i}@example.org`).failures === undefined));
     const three = await (async () => { const u = setup({ autoInviteLimit: 0 }); for (let i = 1; i <= 3; i++) await u.signUp(person(i)); u.mintCode.fail = true; return u.service.inviteNext({ count: 3 }); })();
     check("failing the last one isn't called stopping", three.failed.length === 3 && three.stoppedOnFailures === false);
+}
+
+{
+    const t = setup({ autoInviteLimit: 0 });
+    await t.signUp(person(1));
+    t.mintCode.status = 400;   // lcw-back-end refusing the address
+    t.mintCode.fail = true;
+    for (let i = 0; i < 3; i++) await t.service.inviteNext({ count: 1 });
+    check("lcw-back-end refusing the address (a 400) counts too", t.store.signups.get("p1@example.org").status === "failed");
+}
+{
+    // An outage: none of these are the person's doing, so nobody is set aside
+    const t = setup({ autoInviteLimit: 0 });
+    await t.signUp(person(1));
+    t.mintCode.fail = true;
+    for (const status of [500, 503, 401, 403, 429, 408]) { t.mintCode.status = status; await t.service.inviteNext({ count: 1 }); }
+    t.mintCode.fail = false;
+    t.sendEmail.fail = true;
+    for (const name of ["MessageRejected", "SendingPausedException", "TooManyRequestsException", "TimeoutError"]) { t.sendEmail.errorName = name; await t.service.inviteNext({ count: 1 }); }
+    const row = t.store.signups.get("p1@example.org");
+    check("an outage, a bad key, throttling or a timeout never sets anyone aside", row.status === "queued" && row.failures === undefined, row);
+}
+{
+    const t = setup({ autoInviteLimit: 1 });
+    t.sendEmail.fail = true;
+    t.sendEmail.errorName = "TimeoutError";
+    await t.signUp(person(1));
+    check("a send that timed out (SES may have sent it): back in the queue, but today's email stays counted", t.store.signups.get("p1@example.org").status === "queued" && t.store.counters.get("emails#2026-12-15") === 1 && t.log.lines.some((l) => l.includes("may have gone")));
+    t.sendEmail.errorName = "MessageRejected";
+    await t.service.inviteNext({ count: 1 });
+    check("...while a send SES refused gives it back", t.store.counters.get("emails#2026-12-15") === 1);
+}
+{
+    const t = setup({ autoInviteLimit: 2 });
+    let left = 17_000;
+    await t.service.signUp(person(1), "10.0.0.1", () => left);
+    check("with under 18 seconds left, no code is made: back in the queue, email given back, not counted against them",
+        t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 && t.log.lines.some((l) => l.includes("not enough time left")));
+    left = 19_000;
+    await t.service.signUp(person(1), "10.0.0.1", () => left);
+    check("...with enough, the first-N person signing up again is invited", t.store.signups.get("p1@example.org").status === "invited");
 }
 
 // --- No email addresses in the logs

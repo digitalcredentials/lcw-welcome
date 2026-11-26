@@ -75,8 +75,8 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
 {
     const t = await setup("double");
     const answers = await Promise.allSettled(Array.from({ length: 10 }, () => t.service.signUp(person(1), "10.0.0.1")));
-    check("ten sign-ups at once with one email: all get 202, one invite, one code",
-        answers.every((a) => a.value?.status === 202) && t.sendEmail.sent.length === 1 && t.mintCode.calls.length === 1, answers.map((a) => a.value?.status ?? a.reason?.name));
+    check("ten sign-ups at once with one email: one invite, one code; the others get 202 or are asked to try again in a minute",
+        answers.some((a) => a.value?.status === 202) && answers.every((a) => [202, 503].includes(a.value?.status)) && t.sendEmail.sent.length === 1 && t.mintCode.calls.length === 1, answers.map((a) => a.value?.status ?? a.reason?.name));
     check("...and one first-N place taken", (await t.store.count("auto-invites")) === 1);
     check("...and one row, invited", (await t.store.getSignup("p1@example.org")).status === "invited");
     t.clock.advance(2 * 3_600_000);
@@ -190,6 +190,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     const t = await setup("failed", { autoInviteLimit: 0 });
     for (let i = 1; i <= 2; i++) { t.clock.advance(1000); await t.service.signUp(person(i), `10.0.7.${i}`); }
     t.sendEmail.fail = (m) => m.to === "p1@example.org";
+    t.sendEmail.errorName = "BadRequestException";
     await t.service.inviteNext({ count: 1 });
     await t.service.inviteNext({ count: 1 });
     let row = await t.store.getSignup("p1@example.org");
