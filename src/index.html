@@ -7,10 +7,26 @@
 <meta name="robots" content="noindex">
 <title>Learner Credential Wallet Alpha</title>
 <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400..800;1,400&display=swap">
+<script>
+/* A link ending in #feedback goes to the feedback page, keeping ?from= ("link" when there's none). It runs here in
+   <head>, so the welcome page doesn't show first. The feedback page itself (data-feedback-page) stays put. */
+var LCW_LEAVING = false;   // true once this redirect is under way: later scripts then leave the address alone
+function lcwToFeedback(){
+  if(location.hash!=='#feedback' || document.documentElement.hasAttribute('data-feedback-page')) return;
+  var q=new URLSearchParams(location.search); if(!q.get('from')) q.set('from','link');
+  q.delete('ref');   // the feedback page makes its own
+  LCW_LEAVING = true;
+  location.replace('feedback/?'+q.toString());
+}
+lcwToFeedback();
+</script>
 <style>
+/* Figtree, served from this site (fonts/, with its license, OFL.txt) rather than Google Fonts, so the page asks nothing of
+   Google on load. Same files and ranges as Google Fonts serves: one variable font for 400-800, an italic for 400. */
+@font-face{font-family:"Figtree";font-style:normal;font-weight:400 800;font-display:swap;src:url(fonts/figtree-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Figtree";font-style:normal;font-weight:400 800;font-display:swap;src:url(fonts/figtree-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Figtree";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/figtree-italic-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Figtree";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/figtree-italic-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
 /* Layout: shares dccommons.org's colors and type, but not its page grammar, so the two sites
    read as related but distinct. A wide hero (text beside a simplified wallet screen sitting on Maya's
    space) with an indigo-outlined status box; the interactive comparison (an app's account vs Maya's own space) sits in How it works, then sections as alternating bands (white, wash), each with its
@@ -407,51 +423,22 @@ ol.steps span{color:var(--ink-2)}
 @media (max-width:520px){.qa-a{padding-right:4px}}
 @media (prefers-reduced-motion:reduce){.qa summary::after{transition:none}}
 
-/* feedback form: one dialog, opened from Try it and Get involved. Sends to a Google Form, as dccommons.org does. */
-.tool-links .linkish{display:inline-block;padding-block:10px;font-weight:inherit}
-.fb{width:min(36rem,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;border:0;border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:0 24px 60px -20px rgba(24,44,93,.5)}
-.fb::backdrop{background:rgba(24,44,93,.45)}
-.fb-in{padding:24px;display:flex;flex-direction:column;gap:14px}
-.fb-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-.fb-h{font-size:var(--step-1);margin:0}
-.fb-x{flex:none;width:40px;height:40px;margin:-8px -8px 0 0;display:grid;place-items:center;border:0;border-radius:4px;background:none;color:var(--ink-2);cursor:pointer}
-.fb-x:hover{background:var(--wash);color:var(--indigo-deep)}
-/* full-page feedback: the same form, moved out of the dialog onto its own page (the wallet links here) */
-.fbp,.fbp-only{display:none}
-body.fbp-on main > *:not(.fbp),body.fbp-on .site-nav,body.fbp-on .mobile-menu{display:none!important}
-body.fbp-on .fbp{display:block;background:var(--wash);padding-block:40px 64px}
-body.fbp-on .fbp-only{display:block}
-.fbp-card.fb{width:auto;max-width:38rem;max-height:none;margin:0 auto;border:1px solid var(--rule);box-shadow:none}  /* .fb carries the form styles; these undo the dialog sizing */
-.fbp-card .fb-x,.fbp-card #fb-cancel,.fbp-card #fb-close{display:none}
-.fbp-card .fb-h{font-size:var(--step-2)}
-@media (max-width:520px){body.fbp-on .fbp{padding-block:16px 40px}}
-.fb-x svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.fb form,.fb-done{display:flex;flex-direction:column;gap:14px;margin:0}
-.fb form[hidden],.fb-done[hidden],.fb-err[hidden],.fb-other[hidden]{display:none}
-.fb fieldset{border:0;margin:0;padding:0;min-width:0}
-.fb legend,.fb-label{font-weight:650;font-size:.9375rem;color:var(--ink);padding:0;margin-bottom:6px}
-.fb-hint{display:block;font-weight:400;color:var(--ink-2);font-size:.875rem}
-.fb-choices{display:flex;flex-direction:column;gap:2px}
-.fb-choice{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:.9375rem;cursor:pointer}
-.fb-choice input{width:18px;height:18px;margin:0;accent-color:var(--indigo);flex:none}
-.fb-field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.fb input[type=text],.fb input[type=email],.fb input[type=url],.fb textarea{font:inherit;font-size:1rem;width:100%;min-width:0;padding:10px 12px;border:1.5px solid #8E97AE;border-radius:4px;background:var(--paper);color:var(--ink)}
-.fb textarea{min-height:6rem;resize:vertical;line-height:1.5}
-.fb input:focus,.fb textarea:focus{outline:2px solid var(--indigo);outline-offset:1px;border-color:var(--indigo)}
-.fb [aria-invalid="true"]{border-color:#8A2626}
-.fb-other{margin:4px 0 0 28px;width:calc(100% - 28px)!important}
-.fb-err{color:#8A2626;font-size:.875rem;font-weight:600;margin:2px 0 0}
-.fb-auto b{color:var(--ink);font-weight:600}
-.fb-priv{margin-top:6px}
-.fb .fb-up{align-self:flex-start;margin-top:4px}
-.fb-opened{margin:4px 0 0}
-.fb-opened[hidden]{display:none}
-#fb-ref{white-space:nowrap}  /* keep FB-XXXXXX in one piece, so it reads and copies as one code */
-.fb-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.fb-status{font-size:.9375rem;margin:0}
-.fb-status.err,.fb-status-err{color:#8A2626;font-weight:600}
-.fb-h:focus{outline:none}
-@media (max-width:520px){.fb-in{padding:20px 16px}.fb-actions .btn{flex:1 1 100%}}
+/* feedback page, at /feedback: a short page that sends people to Google Forms in a new tab, so it's clear their feedback
+   goes to Google (Legal asked that it not look like a form on this site). The welcome page's Share feedback links open it,
+   and so does the wallet, with ?from=wallet. */
+.fbp{display:none}
+[data-feedback-page] main > *:not(.fbp),[data-feedback-page] .site-nav,[data-feedback-page] .mobile-menu{display:none!important}  /* the build marks the /feedback copy, so this applies before any script runs */
+[data-feedback-page] .fbp{display:block;background:var(--wash);padding-block:40px 64px}
+.fbp-card{max-width:38rem;margin:0 auto;background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:14px}
+.fbp-card [hidden]{display:none}
+.fbp-h{font-size:var(--step-2);margin:0}
+.fbp-h:focus{outline:none}
+.fbp-ref b{color:var(--indigo-deep);font-weight:650;white-space:nowrap}  /* keep FB-XXXXXX in one piece, so it reads and copies as one code */
+.fbp-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.fbp-actions .btn{gap:8px}
+.fbp-card .fine b{color:var(--ink);font-weight:600}
+.ext{flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:520px){[data-feedback-page] .fbp{padding-block:16px 40px}.fbp-card{padding:20px 16px}.fbp-actions .btn{flex:1 1 100%}}
 
 /* footer */
 .site-footer{border-top:1px solid var(--rule);background:var(--paper)}
@@ -530,8 +517,20 @@ body.fbp-on .fbp-only{display:block}
 </header>
 
 <main>
-  <section class="fbp" id="feedback-page" aria-label="Share feedback">
-    <div class="wrap"><div class="fbp-card fb" id="fbp-slot"></div></div>
+  <section class="fbp" id="feedback-page" aria-labelledby="fbp-h">
+    <div class="wrap"><div class="fbp-card">
+      <h1 class="fbp-h" id="fbp-h" tabindex="-1">Share feedback</h1>
+      <p>Tell us what worked, what didn't, and what confused you. Please don't include passwords or other private details.</p>
+      <p><span data-ph="feedback-google">We collect feedback with Google Forms, which opens in a new tab. Google's terms of service and privacy policy apply there.</span></p>
+      <p class="fbp-ref" id="fbp-ref" hidden>Your reference: <b id="fb-ref">FB-······</b></p>
+      <div class="fbp-actions">
+        <a class="btn btn-primary" id="fb-main" href="https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform" target="_blank" rel="noopener">Open the feedback form<span class="sr-only"> (opens Google Forms in a new tab)</span><svg class="ext" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-secondary" id="fb-up" href="https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform" target="_blank" rel="noopener" aria-describedby="fb-up-hint">Add screenshots<span class="sr-only"> (opens Google Forms in a new tab)</span><svg class="ext" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+      <p class="fine" id="fb-auto" hidden>The feedback form opens with your reference, where you came from, and your browser and device details (<b id="fb-device">your browser</b>) already filled in. You can see and change them on the form before you send it.</p>
+      <p class="fine" id="fb-up-hint">Screenshots are optional. Add them on a separate Google form<span id="fb-up-same" hidden>, which opens with the same reference</span>. You'll need to sign in with a Google account, and Google shares that account's name and email with us. <span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></p>
+      <p class="fine" id="fbp-wallet" hidden>When you're done, you can close this tab and go back to the wallet.</p>
+    </div></div>
   </section>
   <section class="hero" aria-labelledby="hero-h">
     <div class="wrap hero-grid">
@@ -722,7 +721,7 @@ body.fbp-on .fbp-only{display:block}
           <li><strong>See it in your space</strong><span>The wallet opens your space, and your badge is there. Check that it's verified (it came from the issuer and hasn't been tampered with), and try sharing it.</span></li>
         </ol>
         <p class="fine" data-ph="tip-same-browser">Tip: sign in on the same computer and browser you used to set up your wallet. That's where your badge is offered.</p>
-        <p class="fine">Already invited? <a href="https://alpha.lcw.app/#/login" target="_blank" rel="noopener" data-ph="wallet-link">Open the alpha wallet</a>. It works best on a computer for now. It's only expected to work with the test badge. Found a problem? <a href="#feedback" class="fb-open" data-source="Landing page: Try it">Share feedback</a>.</p>
+        <p class="fine">Already invited? <a href="https://alpha.lcw.app/#/login" target="_blank" rel="noopener" data-ph="wallet-link">Open the alpha wallet</a>. It works best on a computer for now. It's only expected to work with the test badge. Found a problem? <a href="feedback/?from=try-it">Share feedback</a>.</p>
         <div class="ph-block" role="note">
           <ul>
             <li><span data-ph="notice-offline">We don't plan to change or reset the alpha while it runs, but we may take it offline if something goes seriously wrong.</span></li>
@@ -862,7 +861,7 @@ body.fbp-on .fbp-only{display:block}
           <div class="tool">
             <h3 class="tool-name">Tell us what you find</h3>
             <p>Testing the alpha? Tell us what worked, what didn't, and what confused you. It takes a couple of minutes.</p>
-            <div class="tool-links"><a href="#feedback" class="fb-open" data-source="Landing page: Get involved">Share feedback</a><a href="https://github.com/digitalcredentials/lcw-front-end/issues" target="_blank" rel="noopener">Open an issue on GitHub</a></div>
+            <div class="tool-links"><a href="feedback/?from=get-involved">Share feedback</a><a href="https://github.com/digitalcredentials/lcw-front-end/issues" target="_blank" rel="noopener">Open an issue on GitHub</a></div>
           </div>
         </div>
       </div>
@@ -946,73 +945,22 @@ body.fbp-on .fbp-only{display:block}
   </div>
 </footer>
 
-<dialog class="fb" id="fb" aria-labelledby="fb-h">
-  <div class="fb-in">
-    <div class="fb-top">
-      <h2 class="fb-h" id="fb-h" tabindex="-1">Share feedback</h2>
-      <button type="button" class="fb-x" id="fb-x" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <form id="fb-form" novalidate>
-      <p>Tell us what worked, what didn't, and what confused you. Please don't include passwords or other private details.</p>
-      <fieldset id="fb-trying" aria-describedby="fb-trying-err">
-        <legend>What were you trying to do?</legend>
-        <div class="fb-choices">
-          <label class="fb-choice"><input type="radio" name="trying" value="Set up my wallet and space">Set up my wallet and space</label>
-          <label class="fb-choice"><input type="radio" name="trying" value="Get the test badge">Get the test badge</label>
-          <label class="fb-choice"><input type="radio" name="trying" value="Check that it's verified">Check that it's verified</label>
-          <label class="fb-choice"><input type="radio" name="trying" value="Share it">Share it</label>
-          <label class="fb-choice"><input type="radio" name="trying" value="Something else" id="fb-other-r">Something else</label>
-          <input type="text" class="fb-other" id="fb-other" aria-label="What were you trying to do?" hidden>
-        </div>
-        <p class="fb-err" id="fb-trying-err" hidden></p>
-      </fieldset>
-      <div class="fb-field">
-        <label class="fb-label" for="fb-happened">What happened?<span class="fb-hint" id="fb-happened-hint">What did you expect, and what happened instead?</span></label>
-        <textarea id="fb-happened" aria-describedby="fb-happened-hint fb-happened-err"></textarea>
-        <p class="fb-err" id="fb-happened-err" hidden></p>
-      </div>
-      <div class="fb-field">
-        <span class="fb-label">Screenshots <span class="fb-hint" style="display:inline">(optional)</span><span class="fb-hint" id="fb-up-hint">Add them on a separate Google form. It opens in a new tab. You'll need to sign in with a Google account, and Google shares that account's name and email with us.</span><span class="fb-hint fb-priv" id="fb-up-priv"><span data-ph="feedback-screenshots">Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends.</span></span></span>
-        <a class="btn btn-secondary fb-up" id="fb-up" href="https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform" target="_blank" rel="noopener" aria-describedby="fb-up-hint fb-up-priv">Add screenshots</a>
-        <p class="fine fb-opened" id="fb-opened" role="status" hidden>Opened in a new tab. Your reference is <b id="fb-ref"></b>. If the form's "Feedback reference" box is empty, type it in there. When you've added your screenshots, come back here and press Send feedback.</p>
-      </div>
-      <div class="fb-field">
-        <label class="fb-label" for="fb-email">Your email, if we can follow up <span class="fb-hint" style="display:inline">(optional)</span></label>
-        <input type="email" id="fb-email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" aria-describedby="fb-email-err">
-        <p class="fb-err" id="fb-email-err" hidden></p>
-      </div>
-      <p class="fine fb-auto" id="fb-auto">We'll also send your browser and device details (<b id="fb-device">your browser</b>) to help us reproduce problems.</p>
-      <p class="fine"><span data-ph="feedback-privacy">We use what you send only to run and improve the alpha. See the privacy notice.</span></p>
-      <div class="fb-actions">
-        <button type="submit" class="btn btn-primary" id="fb-send">Send feedback</button>
-        <button type="button" class="btn btn-secondary" id="fb-cancel">Cancel</button>
-      </div>
-      <p class="fb-status" id="fb-status" role="status"></p>
-    </form>
-    <div class="fb-done" id="fb-done" hidden>
-      <p>We read every report. If you left your email, we may follow up.</p>
-      <p class="fbp-only">You can close this tab and go back to the wallet.</p>
-      <div class="fb-actions">
-        <button type="button" class="btn btn-primary" id="fb-close">Close</button>
-        <button type="button" class="linkish" id="fb-again">Send another</button>
-      </div>
-    </div>
-  </div>
-</dialog>
-
 <script>
-/* Always open at the top, even when the link ends in a section anchor like #idea.
-   The anchor is kept in LCW_START_HASH first, so #feedback can still open the feedback form. */
+/* A link ending in a section anchor like #idea opens at the top, not at the anchor. With no anchor, the browser keeps its
+   usual scroll, so Back from /feedback returns to where the tester was; once the jump to the top is done, scroll
+   restoration goes back to normal for the same reason.
+   The anchor is kept in LCW_START_HASH first, so a #faq-<question> link can still open its answer.
+   Not while the #feedback redirect in <head> is under way: changing the address then could cancel it. */
 var LCW_START_HASH = location.hash;
 (function(){
+  if(!location.hash || LCW_LEAVING) return;
   try { history.scrollRestoration = 'manual'; } catch(e){}
-  if(!location.hash) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
   function top(){
     var h = document.documentElement, s = h.style.scrollBehavior;
     h.style.scrollBehavior = 'auto'; window.scrollTo(0,0); h.style.scrollBehavior = s;
   }
-  top(); window.addEventListener('load', function(){ top(); setTimeout(top, 0); });
+  top(); window.addEventListener('load', function(){ top(); setTimeout(function(){ top(); try { history.scrollRestoration = 'auto'; } catch(e){} }, 0); });
 })();
 (function(){
   // Phones: the menu button shows the section links under the header (same behavior as dccommons.org)
@@ -1144,115 +1092,64 @@ var LCW_START_HASH = location.hash;
   window.addEventListener('hashchange', function(){ go(location.hash, true); });
 })();
 
-/* Feedback form. Sends to a Google Form, the same way dccommons.org's "Get in touch" form does.
-   Entry IDs come from the form's public page (or "Get pre-filled link"). The radio values must match
-   the form's options exactly, and the Google Form must not require anything this form doesn't, or add
-   response validation: Google drops a submission that fails either, and the page can't tell.
-   "Something else" is a plain option there, so what the tester typed goes at the top of "What happened?".
-   Open the form from anywhere with a link ending in #feedback, or the full page at /feedback; add ?from=<place> to record where. */
+/* Feedback page, at /feedback (the build puts a copy of this page there, marked with data-feedback-page, so both
+   addresses stay one file). Feedback goes to Google Forms in a new tab, so it's clear Google collects it; this page
+   only makes the two links. Each visit gets a fresh reference (FB-XXXXXX), filled in on both forms so the team can
+   match screenshots to their feedback. The main form also opens with the browser and device details and where the
+   tester came from ("Feedback page", plus ?from=, e.g. "Feedback page: wallet"); the tester can change any of them.
+   The reference is kept in the address (?ref=), so a reload, or Back to this tab, shows the same one; a new visit
+   gets a new one. On the welcome page, a link ending in #feedback goes to the page (lcwToFeedback, in <head>).
+   Entry ids come from each form's "Get pre-filled link". */
 var FEEDBACK_FORM = {
-  action: "https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/formResponse",
-  entries: { trying:"entry.413115414", happened:"entry.667984208", screenshot:"entry.991851856", email:"entry.205670620",
-             device:"entry.1052076762", source:"entry.566921339" }
+  url: "https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform",
+  entries: { reference:"entry.991851856", device:"entry.1052076762", source:"entry.566921339" }
 };
-/* Screenshots go on a separate Google Form, because a form with an upload question makes everyone sign in to Google.
-   Each feedback gets a reference. It is filled in on the upload form (reference = that form's "Feedback reference" entry,
-   from its "Get pre-filled link"), and sent in the main form's screenshot field when the tester opened the upload form,
-   so the team can match the two. With no reference entry set, the upload form opens with that box empty. */
+/* Screenshots go on a separate Google Form, because a form with an upload question makes everyone sign in to Google. */
 var UPLOAD_FORM = {
   url: "https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform",
   reference: "entry.370601510"
 };
 (function(){
-  var dlg=document.getElementById('fb'), form=document.getElementById('fb-form'), done=document.getElementById('fb-done'),
-      fbH=document.getElementById('fb-h'), status=document.getElementById('fb-status'), send=document.getElementById('fb-send'),
-      other=document.getElementById('fb-other'), otherR=document.getElementById('fb-other-r'),
-      happened=document.getElementById('fb-happened'), email=document.getElementById('fb-email'),
-      up=document.getElementById('fb-up'), opened=document.getElementById('fb-opened');
-  if(!dlg || typeof dlg.showModal!=='function') return;
-  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/, source='', ref='', upOpened=false;
+  var onPage=document.documentElement.hasAttribute('data-feedback-page');
+  if(!onPage){ window.addEventListener('hashchange', lcwToFeedback); return; }   // the welcome page
+  var h=document.getElementById('fbp-h'), main=document.getElementById('fb-main'), up=document.getElementById('fb-up');
+  function param(){ var f=null; try { f=new URLSearchParams(location.search).get('from'); } catch(e){} return f; }
   function newRef(){ var c='23456789ABCDEFGHJKMNPQRSTUVWXYZ', a=new Uint32Array(6), r='FB-';
     try { crypto.getRandomValues(a); } catch(e){ for(var i=0;i<6;i++) a[i]=Math.floor(Math.random()*1e9); }
     for(var j=0;j<6;j++) r+=c[a[j]%c.length];
-    ref=r; upOpened=false; opened.hidden=true; document.getElementById('fb-ref').textContent=ref;   // shown after Add screenshots, in case the upload form drops the pre-filled reference
-    up.href=UPLOAD_FORM.url+(UPLOAD_FORM.reference ? '?usp=pp_url&'+UPLOAD_FORM.reference+'='+encodeURIComponent(ref) : ''); }
-  newRef();
-  up.addEventListener('click', function(){ upOpened=true; opened.hidden=false; });
+    return r; }
   function device(){
     var u=navigator.userAgent;
     var b=/Edg\//.test(u)?'Edge':/OPR\//.test(u)?'Opera':/Firefox\//.test(u)?'Firefox':/Chrome\//.test(u)?'Chrome':/Safari\//.test(u)?'Safari':'another browser';
     var o=/iPhone|iPad/.test(u)?'iPhone or iPad':/Android/.test(u)?'Android':/Mac OS X/.test(u)?'a Mac':/Windows/.test(u)?'Windows':/CrOS/.test(u)?'a Chromebook':/Linux/.test(u)?'Linux':'another device';
     return b+' on '+o;
   }
-  var dev=device(); document.getElementById('fb-device').textContent=dev;
-  document.getElementById('fb-auto').hidden=!FEEDBACK_FORM.entries.device;   // say so only when it's actually sent
-  function err(id,msg,focusEl){ var e=document.getElementById(id+'-err'), f=focusEl||document.getElementById(id);
-    e.textContent=msg; e.hidden=false; if(f.tagName!=='FIELDSET') f.setAttribute('aria-invalid','true'); (f.tagName==='FIELDSET'?f.querySelector('input'):f).focus(); }
-  function clear(){ form.querySelectorAll('.fb-err').forEach(function(e){ e.hidden=true; e.textContent=''; });
-    form.querySelectorAll('[aria-invalid]').forEach(function(f){ f.removeAttribute('aria-invalid'); }); status.textContent=''; status.className='fb-status'; }
-  function reset(){ form.reset(); other.hidden=true; clear(); done.hidden=true; form.hidden=false; fbH.textContent='Share feedback'; newRef(); }
-  function open(src){ source=src||''; if(!done.hidden) reset(); dlg.showModal(); var first=form.querySelector('input[name=trying]:checked')||form.querySelector('input[name=trying]'); if(!form.hidden) first.focus(); }
-  document.querySelectorAll('.fb-open').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); open(b.getAttribute('data-source')); }); });
-  /* a link from anywhere else that ends in #feedback opens the form too */
-  function param(){ var f=null; try { f=new URLSearchParams(location.search).get('from'); } catch(e){} return f; }
-  function fromLink(){ return param()||'Link'; }
-  /* Full page: the same form at its own address, /feedback. The build puts a copy of this page there,
-     marked with data-feedback-page, so both places always match and it works under any folder.
-     The wallet's feedback button links to /feedback?from=wallet. */
-  var inner=dlg.querySelector('.fb-in'), slot=document.getElementById('fbp-slot');
-  var onPage=document.documentElement.hasAttribute('data-feedback-page');
-  if(onPage){
-    slot.appendChild(inner); document.body.classList.add('fbp-on');
-    fbH.setAttribute('role','heading'); fbH.setAttribute('aria-level','1');
-    source='Feedback page'+(param()?': '+param():'');
-    document.title='Share feedback · '+document.title;
-    document.querySelector('.site-header .brand').setAttribute('href','../');   // the logo goes back to the welcome page, one folder up
-    fbH.focus({preventScroll:true});
+  function prefill(url, pairs){ var q=new URLSearchParams(); q.append('usp','pp_url');
+    pairs.forEach(function(p){ if(p[0]) q.append(p[0], p[1]); }); return url+'?'+q.toString(); }
+  /* One visit, one reference: send more than one report from a visit and they share it. The reference in the address
+     is kept on a reload or Back/Forward (and so in a duplicated or restored tab, which browsers count as Back/Forward).
+     A bookmarked, autocompleted or shared address is a new visit, so it gets a new one. */
+  var nav=''; try { nav=performance.getEntriesByType('navigation')[0].type; } catch(e){}
+  if(!nav){ try { nav=['navigate','reload','back_forward'][performance.navigation.type]||''; } catch(e){} }   // older Safari
+  var dev=device(), from=param(), E=FEEDBACK_FORM.entries, q=new URLSearchParams(location.search), ref=q.get('ref');
+  if(!(nav==='reload' || nav==='back_forward') || !/^FB-[2-9A-HJKMNP-Z]{6}$/.test(ref||'')){   // the letters newRef uses
+    ref=newRef(); q.set('ref', ref);
+    try { history.replaceState(null, '', location.pathname+'?'+q.toString()+location.hash); } catch(e){}
   }
-  function byHash(){
-    if(location.hash!=='#feedback') return;
-    try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
-    if(onPage){ fbH.focus(); return; }   // the form is already on this page
-    open(fromLink()); }
-  if(LCW_START_HASH==='#feedback' && !onPage) open(fromLink());
-  window.addEventListener('hashchange', byHash);
-  ['fb-x','fb-cancel','fb-close'].forEach(function(id){ document.getElementById(id).addEventListener('click', function(){ dlg.close(); }); });
-  dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.close(); });   // a click on the backdrop
-  document.getElementById('fb-again').addEventListener('click', function(){ reset(); form.querySelector('input[name=trying]').focus(); });
-  form.addEventListener('change', function(e){ if(e.target.name==='trying'){ other.hidden=!otherR.checked; if(otherR.checked) other.focus(); } });
-  form.addEventListener('submit', function(e){
-    e.preventDefault(); clear();
-    var pick=form.querySelector('input[name=trying]:checked'), what=happened.value.trim(), mail=email.value.trim();
-    if(!pick){ err('fb-trying','Choose what you were trying to do.'); return; }
-    if(pick===otherR && !other.value.trim()){ err('fb-trying','Say what you were trying to do, or choose another option.', other); return; }
-    if(!what){ err('fb-happened','Tell us what happened.'); return; }
-    if(mail && !EMAIL.test(mail)){ err('fb-email','Check your email address. It should look like name@example.org.'); return; }
-    function finish(){ form.hidden=true; done.hidden=false; fbH.textContent='Thanks for telling us'; fbH.focus(); }
-    var E=FEEDBACK_FORM.entries;
-    if(!FEEDBACK_FORM.action || !E.trying || !E.happened){ finish(); return; }   // mock-up: nothing is sent
-    var data=new URLSearchParams();
-    data.append(E.trying, pick.value);
-    data.append(E.happened, pick===otherR ? 'Trying to: '+other.value.trim()+'\n\n'+what : what);
-    if(E.device) data.append(E.device, dev+' | '+navigator.userAgent+' | '+innerWidth+'x'+innerHeight);
-    if(upOpened && E.screenshot) data.append(E.screenshot, 'On the upload form, reference '+ref);
-    if(mail && E.email) data.append(E.email, mail);
-    if(E.source) data.append(E.source, source||'unknown');
-    var label=send.textContent; send.disabled=true; send.textContent='Sending…';
-    /* If the browser or network blocks the send, offer Google's own form with the answers already filled in, so nothing is lost. */
-    function fallback(){
-      var u=FEEDBACK_FORM.action.replace(/\/formResponse$/,'/viewform')+'?usp=pp_url&'+data.toString();
-      status.textContent=''; status.className='fb-status';
-      var lead=document.createElement('span'); lead.className='fb-status-err'; lead.textContent="We couldn't send this from here. ";
-      var a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener'; a.textContent='Send it on Google Forms';
-      a.addEventListener('click', function(){ setTimeout(function(){ status.textContent='Opened in a new tab. Press Submit there to send it.'; }, 0); });
-      status.append(lead, 'Your answers are already filled in. ', a, '.');
-      status.scrollIntoView({block:'nearest'});
-    }
-    fetch(FEEDBACK_FORM.action, { method:'POST', mode:'no-cors', body:data })
-      .then(finish)
-      .catch(fallback)
-      .then(function(){ send.disabled=false; send.textContent=label; });
-  });
+  document.getElementById('fb-device').textContent=dev;
+  document.getElementById('fb-ref').textContent=ref;
+  function setMain(){ main.href=prefill(FEEDBACK_FORM.url, [[E.reference, ref], [E.device, dev+' | '+navigator.userAgent+' | '+innerWidth+'x'+innerHeight], [E.source, 'Feedback page'+(from?': '+from:'')]]); }
+  setMain(); window.addEventListener('resize', setMain);   // so the window size is the one in use when the form is opened
+  up.href=prefill(UPLOAD_FORM.url, [[UPLOAD_FORM.reference, ref]]);
+  document.getElementById('fbp-wallet').hidden = from!=='wallet';
+  document.getElementById('fbp-ref').hidden = !(E.reference || UPLOAD_FORM.reference);   // only when a form gets it
+  document.getElementById('fb-up-same').hidden = !(E.reference && UPLOAD_FORM.reference);
+  var all = !!(E.reference && E.device && E.source);   // say what's filled in only when it's all sent
+  document.getElementById('fb-auto').hidden = !all;
+  if(all) main.setAttribute('aria-describedby', 'fb-auto');
+  h.focus({preventScroll:true});
+  /* #feedback here keeps you on this page */
+  window.addEventListener('hashchange', function(){ if(location.hash==='#feedback'){ try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} h.focus(); } });
 })();
 </script>
 </body>

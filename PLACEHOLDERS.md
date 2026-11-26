@@ -20,8 +20,10 @@ Where Legal's wording comes from is tracked in [#1](https://github.com/digitalcr
 | `faq-private-notice` | FAQ, "Is my data private?" | See the privacy notice. (Not linked yet.) |
 | `footer-terms` | Footer | Terms of use (links nowhere yet) |
 | `footer-privacy` | Footer | Privacy (links nowhere yet) |
-| `feedback-screenshots` | Feedback form, under "Screenshots", above the Add screenshots button | Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends. |
-| `feedback-privacy` | Feedback form, above "Send feedback" | We use what you send only to run and improve the alpha. See the privacy notice. |
+| `feedback-google` | Feedback page (/feedback), above the reference | We collect feedback with Google Forms, which opens in a new tab. Google's terms of service and privacy policy apply there. |
+| `feedback-screenshots` | Feedback page (/feedback), under the Add screenshots button | Screenshots can show your name, email or credentials. Only the Digital Credentials Commons team can see them, and we delete them when the alpha ends. |
+
+Not on this page, so not marked: the feedback Google Form's description ends "We use what you send only to run and improve the alpha. See the privacy notice." Link the privacy notice there once it exists.
 
 ## Waiting on the team
 
