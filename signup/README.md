@@ -40,7 +40,7 @@ Limits to know about:
 - **The whole-API limit is shared.** A script sending more than 10 requests a second slows sign-up for everyone while it runs. AWS WAF can't be attached to an HTTP API, so the fix, if it happens, is a REST API with WAF rate rules, or a CAPTCHA.
 - **A code can be made but never sent.** If lcw-back-end makes a code but its answer is lost (a timeout, say), the next try makes another. The first is never sent to anyone and is 16 random characters, so it can't be used in practice; it just sits unused in the coupons table. lcw-back-end could stop this by answering the same code for the same `issuedTo`.
 - **An invite SES took over 4 seconds to answer may have gone anyway.** It's tried again, which may send it twice; today's count keeps it, so the daily cap is never passed. A re-send like that stays counted too, toward the day's and the address's limits.
-- **A table error at the wrong moment can leave one first-100 place unused.** If the count of places goes up but its answer is lost, the place is counted without anyone in it. Places are never given to two people.
+- **A table error at the wrong moment can leave one first-100 place unused.** If a write about a place times out, it may still land later, so the place stays counted. Places are never given to two people. (If it happens to the 100th place, that person is queued instead.) In the same way, today's email count can end a little high, never low.
 - **The per-network count is kept as an unsalted hash, for 2 hours** (DynamoDB deletes it after that). The hash hides the address at a glance, but someone who can read the table could work an IPv4 address out from it.
 
 ## What's where
@@ -109,8 +109,8 @@ SIGNUP_API=<SignupUrl> npm run build
 The admin console's button will call `lcw-welcome-invite` (not built yet). Until then, someone with AWS access can run it:
 
 ```bash
-aws lambda invoke --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
+AWS_MAX_ATTEMPTS=1 aws lambda invoke --cli-read-timeout 0 --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
   --payload '{"count": 25, "dryRun": true}' /dev/stdout   # who would be invited; sends nothing
-aws lambda invoke --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
+AWS_MAX_ATTEMPTS=1 aws lambda invoke --cli-read-timeout 0 --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
   --payload '{"count": 25}' /dev/stdout                   # invites them
 ```

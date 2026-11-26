@@ -304,7 +304,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.store.markAutoInvite = async () => { throw new Error("throttled"); };
     let threw = false;
     try { await t.signUp(person(1)); } catch { threw = true; }
-    check("if recording the place fails, the place is given back and nothing is sent", threw && t.store.counters.get("auto-invites") === 0 && t.sendEmail.sent.length === 0);
+    check("if recording the place fails, nothing is sent, and the place stays taken (the write may still land)", threw && t.store.counters.get("auto-invites") === 1 && t.sendEmail.sent.length === 0);
 }
 {
     const t = setup();
@@ -395,7 +395,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     let threw = false;
     try { await t.signUp(person(1)); } catch { threw = true; }
     t.store.markAutoInvite = markAutoInvite;
-    check("cut short: the request fails, the row is there with no answer, and the place is given back", threw && t.store.signups.get("p1@example.org").autoInvite === undefined && t.store.counters.get("auto-invites") === 0);
+    check("cut short: the request fails, the row is there with no answer, and the place stays taken", threw && t.store.signups.get("p1@example.org").autoInvite === undefined && t.store.counters.get("auto-invites") === 1);
     t.clock.advance(10_000);
     const soon = await t.signUp(person(1));
     check("trying again within 30 seconds is asked to try again in a minute (its first request could still be running)", soon.status === 503 && t.store.signups.get("p1@example.org").autoInvite === undefined && t.sendEmail.sent.length === 0);
@@ -403,7 +403,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     check("...and \"invite the next N\" leaves it to that request for now", dry.wouldInvite.length === 0);
     t.clock.advance(30_000);
     await t.signUp(person(1));
-    check("trying again after that gives them their first-N place and invites them", t.store.signups.get("p1@example.org").autoInvite === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.store.counters.get("auto-invites") === 1);
+    check("trying again after that gives them a first-N place and invites them (the first try's place is left unused)", t.store.signups.get("p1@example.org").autoInvite === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.store.counters.get("auto-invites") === 2);
 }
 {
     const t = setup({ autoInviteLimit: 1 });
@@ -525,7 +525,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.store.markAutoInvite = markAutoInvite;
     t.clock.advance(60_000);
     const answers = await Promise.allSettled([t.service.signUp(person(1), "10.0.0.1"), t.service.signUp(person(1), "10.0.0.1")]);
-    check("two requests deciding one place at once: both 202, one place taken, one invite", answers.every((a) => a.value?.status === 202) && t.store.counters.get("auto-invites") === 1 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
+    check("two requests deciding one place at once: both 202, one place taken (plus the first try's, unused), one invite", answers.every((a) => a.value?.status === 202) && t.store.counters.get("auto-invites") === 2 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
 }
 
 {
@@ -570,7 +570,7 @@ for (const what of ["mintCode", "sendEmail"]) {
     const answer = await t.service.signUp(person(1), "10.0.0.1").catch((error) => ({ threw: error.message }));
     t.store.take = take;
     check("a place isn't spent on someone \"invite the next N\" is already inviting: given back, and the usual 202",
-        answer.status === 202 && t.store.counters.get("auto-invites") === 0 && t.store.signups.get("p1@example.org").status === "invited" && t.sendEmail.sent.length === 1);
+        answer.status === 202 && t.store.counters.get("auto-invites") === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.sendEmail.sent.length === 1);
 }
 {
     const t = setup({ autoInviteLimit: 0 });
@@ -579,6 +579,24 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.store.release = async () => { throw new Error("timed out"); };
     await t.service.inviteNext({ count: 1 });
     check("today's email is given back even if putting the sign-up back failed", (t.store.counters.get("emails#2026-12-15") ?? 0) === 0);
+}
+
+{
+    // Recording the place times out, but the write lands just after the check that follows it
+    const t = setup({ autoInviteLimit: 3 });
+    const markAutoInvite = t.store.markAutoInvite, getSignup = t.store.getSignup;
+    let late;
+    t.store.markAutoInvite = async (...args) => { late = args; throw new Error("timed out"); };
+    t.store.getSignup = async (email) => {
+        const row = await getSignup(email);
+        if (late) { const args = late; late = null; await markAutoInvite(...args); }
+        return row;
+    };
+    try { await t.signUp(person(1)); } catch { /* 500 */ }
+    t.store.markAutoInvite = markAutoInvite;
+    t.store.getSignup = getSignup;
+    const placed = [...t.store.signups.values()].filter((r) => r.autoInvite === 1).length;
+    check("a write that lands after the check: its place isn't given back, so it can't go to two people", placed === 1 && t.store.counters.get("auto-invites") >= placed);
 }
 
 // --- No email addresses in the logs

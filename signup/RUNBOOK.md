@@ -40,11 +40,13 @@ aws dynamodb query --table-name lcw-welcome-signups --index-name status-index \
 **Invite the next group**: check with a dry run first, then invite. People are invited in sign-up order. Each email counts toward the daily cap (300 by default), so keep a group under what's left of today's cap.
 
 ```bash
-aws lambda invoke --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
+AWS_MAX_ATTEMPTS=1 aws lambda invoke --cli-read-timeout 0 --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
   --payload '{"count": 25, "dryRun": true}' /dev/stdout
-aws lambda invoke --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
+AWS_MAX_ATTEMPTS=1 aws lambda invoke --cli-read-timeout 0 --function-name lcw-welcome-invite --cli-binary-format raw-in-base64-out \
   --payload '{"count": 25}' /dev/stdout
 ```
+
+`--cli-read-timeout 0` and `AWS_MAX_ATTEMPTS=1` matter: without them, the AWS CLI gives up waiting after 60 seconds and starts the run again while the first is still going, inviting more than asked. Wait for the answer; never run it again until it's back.
 
 The answer lists who was invited and anyone who failed. `capReached` means it stopped at the daily cap; `stoppedOnFailures` means it stopped after 3 failures in a row (see the alerts below).
 

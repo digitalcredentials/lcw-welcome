@@ -5,6 +5,8 @@
 //   { "count": 25 }                  -> { invited: [emails], skipped, failed, capReached, stoppedEarly, stoppedOnFailures }
 //   a count that isn't a whole number from 1 to MAX_BATCH -> { error }, with nothing invited.
 //   The caller must check for error: it's an answer, not a failed invocation, so it doesn't alarm.
+//   The caller must wait for the answer (a run can take minutes) and never retry
+//   the invoke: a second run started while the first is going invites another N.
 // "Invite the next N" can invite a few fewer than N, if someone in the queue was
 // invited a moment before (the queue's index lags a little; they're counted as
 // skipped), or signed up seconds ago. It doesn't top up from further down the

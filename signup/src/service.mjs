@@ -47,10 +47,10 @@ const FAILURES_IN_A_ROW = 3;
 const UNDECIDED_AFTER_MS = 35_000;
 // Time an invite needs, so it isn't cut off by the function's Timeout partway:
 // the API key (2 s), making the code (6 s), sending (4 s), and the three table
-// writes around them (1.5 s each at most, store.mjs). If one of those fails,
+// writes around them (1.5 s each at most: connecting and answering, store.mjs). If one of those fails,
 // putting it back can take a little longer; if the function is cut off then,
 // the claim goes stale and the invite can be finished later.
-const NEEDS_TO_MINT_MS = 17_000, NEEDS_TO_SEND_MS = 7_000;
+const NEEDS_TO_MINT_MS = 17_000, NEEDS_TO_SEND_MS = 8_000;
 
 // Whether a send's error is about the person's address, so it counts against
 // them: SES refusing the request as invalid. lcw-back-end's errors never are
@@ -150,6 +150,8 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             return "late";
         }
         // From here on, any error puts the sign-up back, so it's never left "inviting"
+        // If taking today's email fails, it isn't given back: the take may have landed or not,
+        // and giving back one that didn't would let the cap be passed. Erring high is safe.
         let emailTaken = false;
         let step = "counting today's emails";
         try {
@@ -203,15 +205,17 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             await store.markAutoInvite(email, placed ? 1 : 0, token);
         } catch (error) {
             // Did it land? (Its answer may have been lost, another request decided first, or
-            // "invite the next N" took the row.) If that can't be told, keep any place taken:
-            // one place unused beats two people in it.
+            // "invite the next N" took the row.)
             const row = await store.getSignup(email).catch(() => null);
             if (row?.decidedBy !== token) {
-                if (placed && row) {
-                    await store.giveBack("auto-invites").catch((e) => log.error("SIGNUP_FAILED: couldn't give back a first-N place; one is now unused:", describeError(e)));
+                // Another request decided it, or it's being invited anyway: that stands, and this
+                // write can't land now (its condition fails), so any place taken here goes back
+                if (row && (row.autoInvite !== undefined || row.status !== "queued")) {
+                    if (placed) await store.giveBack("auto-invites").catch((e) => log.error("SIGNUP_FAILED: couldn't give back a first-N place; one is now unused:", describeError(e)));
+                    return;
                 }
-                // Another request decided it, or it's being invited anyway: that stands
-                if (row && (row.autoInvite !== undefined || row.status !== "queued")) return;
+                // Otherwise it can't be told: a write that timed out can still land later. So any
+                // place taken stays taken: one place unused beats two people in it.
                 throw error;
             }
         }

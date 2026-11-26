@@ -96,7 +96,7 @@ const { check, done } = checker();
     const tooLong = new Promise((resolve) => setTimeout(resolve, 5000).unref());
     try { await Promise.race([store.getSignup("a@example.org"), tooLong]); } catch (e) { error = e; }
     const took = Date.now() - started;
-    check("a table call that's never answered fails after 1.5 seconds (the default), with one try, never a retry", error !== undefined && took >= 1400 && took < 2500 && sockets.length === 1, { took, tries: sockets.length, error: error?.name });
+    check("a table call that's never answered fails after its 1-second answer limit (the default), with one try, never a retry", error !== undefined && took >= 900 && took < 2000 && sockets.length === 1, { took, tries: sockets.length, error: error?.name });
     sockets.forEach((socket) => socket.destroy());
     server.close();
 }
