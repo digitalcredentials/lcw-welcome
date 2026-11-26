@@ -14,7 +14,7 @@ export function memoryStore() {
         },
         async markAutoInvite(email, value, token) {
             const row = signups.get(email);
-            if (!row || row.autoInvite !== undefined) throw Object.assign(new Error("ConditionalCheckFailed"), { name: "ConditionalCheckFailedException" });
+            if (!row || row.autoInvite !== undefined || row.status !== "queued") throw Object.assign(new Error("ConditionalCheckFailed"), { name: "ConditionalCheckFailedException" });
             row.autoInvite = value;
             row.decidedBy = token;
         },

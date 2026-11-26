@@ -89,14 +89,14 @@ const { check, done } = checker();
     const sockets = [];
     const server = createServer((socket) => sockets.push(socket));   // accepts, never answers
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const client = tableClient({ endpoint: `http://127.0.0.1:${server.address().port}`, requestTimeout: 300, region: "us-east-1", credentials: { accessKeyId: "x", secretAccessKey: "x" } });
+    const client = tableClient({ endpoint: `http://127.0.0.1:${server.address().port}`, region: "us-east-1", credentials: { accessKeyId: "x", secretAccessKey: "x" } });
     const store = dynamoStore({ client, signupsTable: "s", countersTable: "c" });
     const started = Date.now();
     let error;
     const tooLong = new Promise((resolve) => setTimeout(resolve, 5000).unref());
     try { await Promise.race([store.getSignup("a@example.org"), tooLong]); } catch (e) { error = e; }
     const took = Date.now() - started;
-    check("a table call that's never answered fails after 2 tries of the time limit each", error !== undefined && took >= 550 && took < 3000 && sockets.length === 2, { took, tries: sockets.length, error: error?.name });
+    check("a table call that's never answered fails after 2 tries of 1 second each (the default)", error !== undefined && took >= 1900 && took < 3500 && sockets.length === 2, { took, tries: sockets.length, error: error?.name });
     sockets.forEach((socket) => socket.destroy());
     server.close();
 }

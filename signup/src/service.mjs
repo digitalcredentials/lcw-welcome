@@ -42,13 +42,15 @@ const epoch = (date) => Math.floor(date.getTime() / 1000);
 // "Invite the next N" stops after this many failures in a row: lcw-back-end or SES is probably down
 const FAILURES_IN_A_ROW = 3;
 // A new sign-up's first-N place is decided within its request, which the
-// function's Timeout (25 seconds, template.yaml) ends. One still undecided
+// function's Timeout (28 seconds, template.yaml) ends. One still undecided
 // after this long was cut short by an error.
-const UNDECIDED_AFTER_MS = 30_000;
+const UNDECIDED_AFTER_MS = 35_000;
 // Time an invite needs, so it isn't cut off by the function's Timeout partway:
-// the API key (3 s), making the code (8 s), sending (5 s), and a margin for
-// the table writes either side (each 2 s at most a try, store.mjs)
-const NEEDS_TO_MINT_MS = 20_000, NEEDS_TO_SEND_MS = 9_000;
+// the API key (3 s), making the code (8 s), sending (5 s), and the three table
+// writes around them (2.2 s each at most: 2 tries of 1 s, store.mjs). If one
+// of those fails, putting it back can take a little longer; if the function is
+// cut off then, the claim goes stale and the invite is finished later.
+const NEEDS_TO_MINT_MS = 23_000, NEEDS_TO_SEND_MS = 10_000;
 
 // Whether a send's error is about the person's address, so it counts against
 // them: SES refusing the request as invalid. lcw-back-end's errors never are
@@ -117,9 +119,12 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
     async function putBack(email, now, claimedAt, { emailTaken, failed = false, giveUp = false }) {
         try {
             await store.release(email, claimedAt, { failed, giveUp });
-            if (emailTaken) await store.giveBack(`emails#${day(now)}`);
         } catch (error) {
             log.error("INVITE_FAILED: couldn't put a sign-up back in the queue; it's tried again in a few minutes:", describeError(error));
+        }
+        // Apart from the release, so today's email is given back even if that failed
+        if (emailTaken) {
+            await store.giveBack(`emails#${day(now)}`).catch((error) => log.error("INVITE_FAILED: couldn't give back today's email:", describeError(error)));
         }
     }
 
@@ -197,12 +202,16 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         try {
             await store.markAutoInvite(email, placed ? 1 : 0, token);
         } catch (error) {
-            // Did it land? (Its answer may have been lost, or another request decided first.)
-            // If that can't be told, keep any place taken: one place unused beats two people in it.
+            // Did it land? (Its answer may have been lost, another request decided first, or
+            // "invite the next N" took the row.) If that can't be told, keep any place taken:
+            // one place unused beats two people in it.
             const row = await store.getSignup(email).catch(() => null);
             if (row?.decidedBy !== token) {
-                if (placed && row) await store.giveBack("auto-invites").catch(() => {});
-                if (row?.autoInvite !== undefined) return;   // another request decided it; theirs stands
+                if (placed && row) {
+                    await store.giveBack("auto-invites").catch((e) => log.error("SIGNUP_FAILED: couldn't give back a first-N place; one is now unused:", describeError(e)));
+                }
+                // Another request decided it, or it's being invited anyway: that stands
+                if (row && (row.autoInvite !== undefined || row.status !== "queued")) return;
                 throw error;
             }
         }

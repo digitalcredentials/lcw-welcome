@@ -94,8 +94,8 @@ Resources:
       Description: The welcome page's sign-up form (POST /signup)
       Handler: signup.handler
       # Long enough to make a code and send an email for one sign-up (service.mjs
-      # checks for 18 seconds left first), and under the page's 30-second wait
-      Timeout: 25
+      # checks for 23 seconds left first), and under the page's 30-second wait
+      Timeout: 28
       LoggingConfig:
         LogGroup: !Ref SignupFunctionLogGroup
       Policies:

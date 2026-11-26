@@ -51,6 +51,7 @@ Limits to know about:
 - `src/clients.mjs`: the API key, `POST /registration-codes`, and SES.
 - `src/email.mjs`: the invite email. Its wording is a draft (see `PLACEHOLDERS.md`).
 - `src/signup.mjs`, `src/invite.mjs`: the two Lambda handlers.
+- `src/package.json`: the AWS SDK clients are pinned to the version tested and deployed with the functions, rather than the one the Lambda runtime happens to ship, since the time limits on each call depend on how the SDK behaves.
 
 Tables: `lcw-welcome-signups` (one row per email; `status` is `queued`, `inviting`, `invited` or `failed`; the code is kept on the row; `autoInvite` is 1 for one of the first 100 and 0 otherwise) and `lcw-welcome-counters` (the first-100 count, each day's invite emails and re-sends, and each network's sign-ups this hour).
 

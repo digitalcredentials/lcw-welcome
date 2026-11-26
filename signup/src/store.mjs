@@ -56,10 +56,11 @@ async function conditional(client, command) {
     }
 }
 
-// The table client: each try gives up after 2 seconds, with 2 tries at most, so
-// a stalled call fails within the sign-up function's time (service.mjs) and
-// the invite can be put back, instead of the function timing out partway
-export function tableClient({ endpoint = process.env.DYNAMODB_ENDPOINT, requestTimeout = 2000, ...rest } = {}) {
+// The table client: each try gives up after 1 second (DynamoDB usually answers
+// in a few milliseconds), with 2 tries at most, so a stalled call fails within
+// the sign-up function's time (service.mjs) and the invite can be put back,
+// instead of the function timing out partway
+export function tableClient({ endpoint = process.env.DYNAMODB_ENDPOINT, requestTimeout = 1000, ...rest } = {}) {
     // throwOnRequestTimeout: newer SDKs only log a warning at requestTimeout without it
     return new DynamoDBClient({ ...(endpoint && { endpoint }), requestHandler: { requestTimeout, connectionTimeout: 1000, throwOnRequestTimeout: true }, maxAttempts: 2, ...rest });
 }
@@ -91,15 +92,17 @@ export function dynamoStore({
         },
 
         // Records whether a sign-up has one of the first-N places (1) or not (0),
-        // once: refused if the row isn't there or already has an answer.
+        // once: refused if the row isn't there, already has an answer, or isn't
+        // queued any more ("invite the next N" took it, so no place is needed).
         // decidedBy (the deciding request's token) shows whose answer it is.
         async markAutoInvite(email, value, token) {
             await client.send(new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
                 UpdateExpression: "SET autoInvite = :value, decidedBy = :token",
-                ConditionExpression: "attribute_exists(email) AND attribute_not_exists(autoInvite)",
-                ExpressionAttributeValues: { ":value": N(value), ":token": S(token) }
+                ConditionExpression: "attribute_exists(email) AND attribute_not_exists(autoInvite) AND #status = :queued",
+                ExpressionAttributeNames: { "#status": "status" },
+                ExpressionAttributeValues: { ":value": N(value), ":token": S(token), ":queued": S("queued") }
             }));
         },
 

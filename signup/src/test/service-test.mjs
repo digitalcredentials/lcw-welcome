@@ -485,12 +485,12 @@ for (const what of ["mintCode", "sendEmail"]) {
 }
 {
     const t = setup({ autoInviteLimit: 2 });
-    let left = 19_000;
+    let left = 22_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
-    check("with under 20 seconds left, no code is made: back in the queue, no email counted, not counted against them, and the team is alerted to invite them",
+    check("with under 23 seconds left, no code is made: back in the queue, no email counted, not counted against them, and the team is alerted to invite them",
         t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 &&
         t.log.lines.some((l) => l.startsWith("error INVITE_FAILED") && l.includes("enough time left")));
-    left = 21_000;
+    left = 24_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
     check("...with enough, the first-N person signing up again is invited", t.store.signups.get("p1@example.org").status === "invited");
 }
@@ -551,6 +551,34 @@ for (const what of ["mintCode", "sendEmail"]) {
     for (let i = 0; i < 4; i++) { t.clock.advance(HOUR); await t.signUp(person(1)); }
     const row = t.store.signups.get("p1@example.org");
     check("SES refusing a first-N address when they sign up (and again) doesn't count against them", row.status === "queued" && row.failures === undefined && row.autoInvite === 1);
+}
+
+{
+    // A sign-up cut short before its place was decided, invited by "invite the next N" while it signs up again
+    const t = setup({ autoInviteLimit: 3 });
+    const markAutoInvite = t.store.markAutoInvite;
+    t.store.markAutoInvite = async () => { throw new Error("throttled"); };
+    try { await t.signUp(person(1)); } catch { /* the first request fails */ }
+    t.store.markAutoInvite = markAutoInvite;
+    t.clock.advance(60_000);
+    const take = t.store.take;
+    t.store.take = async (counter, ...rest) => {
+        // "invite the next N" takes the row just as this request takes a place
+        if (counter === "auto-invites") await t.service.inviteNext({ count: 1 });
+        return take(counter, ...rest);
+    };
+    const answer = await t.service.signUp(person(1), "10.0.0.1").catch((error) => ({ threw: error.message }));
+    t.store.take = take;
+    check("a place isn't spent on someone \"invite the next N\" is already inviting: given back, and the usual 202",
+        answer.status === 202 && t.store.counters.get("auto-invites") === 0 && t.store.signups.get("p1@example.org").status === "invited" && t.sendEmail.sent.length === 1);
+}
+{
+    const t = setup({ autoInviteLimit: 0 });
+    await t.signUp(person(1));
+    t.mintCode.fail = true;
+    t.store.release = async () => { throw new Error("timed out"); };
+    await t.service.inviteNext({ count: 1 });
+    check("today's email is given back even if putting the sign-up back failed", (t.store.counters.get("emails#2026-12-15") ?? 0) === 0);
 }
 
 // --- No email addresses in the logs
