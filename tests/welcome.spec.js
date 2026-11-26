@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { connect } from 'node:net';
 
@@ -134,6 +136,191 @@ test.describe('welcome page', () => {
     await expect(page.locator('#access-to')).toHaveText('test@example.org');
     expect(posts).toEqual([]);
     expect(notFonts(outside)).toEqual([]);
+  });
+});
+
+// Serves the page as if it were built with SIGNUP_API set, and answers the sign-up service's address with
+// `answer` (a function of the request, returning { status } or 'abort'). Returns the requests it received.
+const SIGNUP_API = 'https://signup.example.test/signup';
+async function withSignupApi(page, answer) {
+  const sent = [];
+  await page.route(/^http:\/\/localhost:\d+\/(index\.html)?(\?.*)?$/, async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace('<meta name="lcw-signup-api" content="">', `<meta name="lcw-signup-api" content="${SIGNUP_API}">`);
+    await route.fulfill({ response, body });
+  });
+  await page.route(SIGNUP_API, async route => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204 });
+    sent.push({ method: req.method(), type: req.headers()['content-type'], body: JSON.parse(req.postData() || 'null') });
+    const result = await answer(req);
+    if (result === 'abort') return route.abort();
+    return route.fulfill({ status: result.status, contentType: 'application/json', body: JSON.stringify(result.body ?? {}) });
+  });
+  return sent;
+}
+async function fillSignup(page, { name = 'Test Person', org = '', email = 'test@example.org' } = {}) {
+  await page.fill('#access-name', name);
+  await page.fill('#access-org', org);
+  await page.fill('#access-email', email);
+}
+
+test.describe('sign-up, sending to the sign-up service', () => {
+  test('the page as built has no address, so it stays a mock-up', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/');
+    await expect(page.locator('meta[name="lcw-signup-api"]')).toHaveAttribute('content', '');
+  });
+
+  test('the build puts SIGNUP_API in both pages, and refuses an address that isn\'t https', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'lcw-build-'));
+    await cp('src', join(dir, 'src'), { recursive: true });
+    await cp('scripts', join(dir, 'scripts'), { recursive: true });
+    const build = env => new Promise(resolve => {
+      const child = spawn(process.execPath, ['scripts/build.mjs'], { cwd: dir, env: { ...process.env, ...env } });
+      let out = '';
+      child.stdout.on('data', d => { out += d; });
+      child.stderr.on('data', d => { out += d; });
+      child.on('close', code => resolve({ code, out }));
+    });
+    expect((await build({ SIGNUP_API: SIGNUP_API })).code).toBe(0);
+    for (const file of ['dist/index.html', 'dist/feedback/index.html']) {
+      expect(await readFile(join(dir, file), 'utf8')).toContain(`<meta name="lcw-signup-api" content="${SIGNUP_API}">`);
+    }
+    // --no-signup-api (what npm test uses) leaves the form a mock-up, whatever SIGNUP_API says
+    const mock = await new Promise(resolve => {
+      const child = spawn(process.execPath, ['scripts/build.mjs', '--no-signup-api'], { cwd: dir, env: { ...process.env, SIGNUP_API: SIGNUP_API } });
+      child.on('close', resolve);
+    });
+    expect(mock).toBe(0);
+    expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<meta name="lcw-signup-api" content="">');
+    // A $ or & in the address comes through as written ($& would otherwise be read as a replacement pattern)
+    expect((await build({ SIGNUP_API: 'https://x.example/signup?a=$&b=1' })).code).toBe(0);
+    expect(await readFile(join(dir, 'dist/index.html'), 'utf8')).toContain('<meta name="lcw-signup-api" content="https://x.example/signup?a=$&amp;b=1">');
+    for (const bad of ['http://signup.example.test/signup', 'https://x.example/"><script>', 'javascript:alert(1)']) {
+      const result = await build({ SIGNUP_API: bad });
+      expect(result.code).not.toBe(0);
+      expect(result.out).toContain('SIGNUP_API must be an https:// address');
+    }
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test('sends the name, email, organization and honeypot, then shows the done state', async ({ page, context }) => {
+    const { outside } = await guard(context);
+    const errors = trackErrors(page);
+    const sent = await withSignupApi(page, () => ({ status: 202, body: { ok: true } }));
+    await page.goto('/');
+    await fillSignup(page, { org: '  DCC  ', email: ' test@example.org ' });
+    await page.click('#access-form button[type=submit]');
+    await expect(page.locator('#access-done')).toBeVisible();
+    await expect(page.locator('#access-to')).toHaveText('test@example.org');
+    await expect(page.locator('#access-done-h')).toBeFocused();
+    expect(sent).toEqual([{ method: 'POST', type: 'application/json', body: { name: 'Test Person', email: 'test@example.org', organization: 'DCC', website: '' } }]);
+    expect(notFonts(outside)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('limits the fields to the lengths the sign-up service accepts', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/');
+    await expect(page.locator('#access-name')).toHaveAttribute('maxlength', '200');
+    await expect(page.locator('#access-org')).toHaveAttribute('maxlength', '200');
+    await expect(page.locator('#access-email')).toHaveAttribute('maxlength', '254');
+    await page.fill('#access-name', 'x'.repeat(250));
+    await expect(page.locator('#access-name')).toHaveValue('x'.repeat(200));
+  });
+
+  test('checks the fields before sending anything', async ({ page, context }) => {
+    await guard(context);
+    const sent = await withSignupApi(page, () => ({ status: 202 }));
+    await page.goto('/');
+    await page.click('#access-form button[type=submit]');
+    await expect(page.locator('#access-err')).toHaveText('Enter your name.');
+    // The same addresses the sign-up service refuses: no display names, no non-ASCII
+    for (const email of ['not-an-email', 'x<victim@example.org>', 'a,b@example.org', 'josé@example.org', 'a@example', 'a..b@example.org', '.a@example.org', 'a@-example.org']) {
+      await fillSignup(page, { email });
+      await page.click('#access-form button[type=submit]');
+      await expect(page.locator('#access-err')).toContainText('Check your email address.');
+    }
+    expect(sent).toEqual([]);
+    await fillSignup(page, { email: "o'brien+wallet@mail.example.co.uk" });
+    await page.click('#access-form button[type=submit]');
+    await expect.poll(() => sent.length).toBe(1);
+  });
+
+  test('while it sends, the button is off, and pressing again sends nothing more', async ({ page, context }) => {
+    await guard(context);
+    let release;
+    const held = new Promise(r => { release = r; });
+    const sent = await withSignupApi(page, async () => { await held; return { status: 202 }; });
+    await page.goto('/');
+    await fillSignup(page);
+    const submit = page.locator('#access-form button[type=submit]');
+    await submit.click();
+    await expect(submit).toBeDisabled();
+    await expect(page.locator('#access-form')).toHaveAttribute('aria-busy', 'true');
+    await page.locator('#access-email').press('Enter');
+    await page.evaluate(() => document.getElementById('access-form').requestSubmit());   // a submit the disabled button can't stop
+    release();
+    await expect(page.locator('#access-done')).toBeVisible();
+    expect(sent.length).toBe(1);
+  });
+
+  test('too many sign-ups from one network: says so, and keeps what was typed', async ({ page, context }) => {
+    await guard(context);
+    await withSignupApi(page, () => ({ status: 429, body: { error: 'Too many sign-ups from your network. Try again later.', reason: 'ip-hourly-limit' } }));
+    await page.goto('/');
+    await fillSignup(page, { org: 'DCC' });
+    await page.click('#access-form button[type=submit]');
+    const message = await page.locator('#access-msg-limit').textContent();
+    await expect(page.locator('#access-err')).toHaveText(message);
+    await expect(page.locator('#access-err')).toBeVisible();
+    await expect(page.locator('#access-done')).toBeHidden();
+    await expect(page.locator('#access-email')).toHaveValue('test@example.org');
+    await expect(page.locator('#access-org')).toHaveValue('DCC');
+    await expect(page.locator('#access-form button[type=submit]')).toBeEnabled();
+    await expect(page.locator('#access-email')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  for (const [label, answer] of [['the service fails', () => ({ status: 500 })], ['the request is refused', () => ({ status: 400 })], ['there is no connection', () => 'abort'],
+    ["API Gateway's whole-API throttle answers 429", () => ({ status: 429, body: { message: 'Too Many Requests' } })]]) {
+    test(`when ${label}, it asks to try again, and trying again works`, async ({ page, context }) => {
+      await guard(context);
+      let first = true;
+      const sent = await withSignupApi(page, () => { if (first) { first = false; return answer(); } return { status: 202 }; });
+      await page.goto('/');
+      await fillSignup(page);
+      await page.click('#access-form button[type=submit]');
+      await expect(page.locator('#access-err')).toHaveText(await page.locator('#access-msg-failed').textContent());
+      await expect(page.locator('#access-done')).toBeHidden();
+      await page.click('#access-form button[type=submit]');
+      await expect(page.locator('#access-done')).toBeVisible();
+      expect(sent.length).toBe(2);
+    });
+  }
+
+  test('the honeypot is out of sight, out of the tab order and hidden from screen readers', async ({ page, context }) => {
+    await guard(context);
+    const sent = await withSignupApi(page, () => ({ status: 202 }));
+    await page.goto('/');
+    await expect(page.locator('.access-hp')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#access-hp-x')).toHaveAttribute('tabindex', '-1');
+    // Named so autofill doesn't take it for a field it knows (a real person's sign-up would be thrown away)
+    const hp = await page.locator('#access-hp-x').evaluate(el => [el.name, el.id, el.autocomplete, el.labels[0].textContent].join(' '));
+    expect(hp).not.toMatch(/web|url|site|name|mail|phone|tel|fax|address|company|org/i);
+    const box = await page.locator('#access-hp-x').boundingBox();
+    expect(box === null || box.x + box.width <= 0).toBe(true);
+    // Tabbing on from the email field never lands on it (WebKit, like Safari, also skips the button)
+    await page.focus('#access-email');
+    const reached = [];
+    for (let i = 0; i < 3; i++) { await page.keyboard.press('Tab'); reached.push(await page.evaluate(() => document.activeElement.id)); }
+    expect(reached).not.toContain('access-hp-x');
+    // A bot that fills it in: the page sends it as it is, and the service ignores the sign-up
+    await fillSignup(page);
+    await page.evaluate(() => { document.getElementById('access-hp-x').value = 'http://spam.example'; });
+    await page.click('#access-form button[type=submit]');
+    await expect(page.locator('#access-done')).toBeVisible();
+    expect(sent[0].body.website).toBe('http://spam.example');
   });
 });
 

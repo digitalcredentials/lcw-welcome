@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Kept out of search engines until launch (see README, "Before launch"). -->
 <meta name="robots" content="noindex">
+<!-- Where the sign-up form posts: the sign-up service's POST /signup (signup/). Filled in by the build from SIGNUP_API; empty, the form is a mock-up that sends nothing. -->
+<meta name="lcw-signup-api" content="">
 <title>Learner Credential Wallet Alpha</title>
 <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -328,7 +330,9 @@ h3{font-size:var(--step-1);line-height:1.3}
 @media (max-width:700px){.ideas{grid-template-columns:minmax(0,1fr)}.idea-status{grid-template-columns:minmax(0,1fr);gap:2px}.idea-status dd{margin-bottom:8px}}
 
 /* try it: a real sequence, drawn as a connected stepper */
-/* early-access sign-up (mock-up) */
+/* early-access sign-up */
+/* the honeypot: a field people never see (off-screen, out of the tab order and hidden from screen readers), so only a bot fills it in */
+.access-hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
 .ab-kind{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
 .ab-title{font-weight:700;color:var(--indigo-deep)}
 .ab-issuer{font-size:.875rem;color:var(--ink-2)}
@@ -697,14 +701,17 @@ body.fbp-on .fbp-only{display:block}
             <div class="access-right">
             <p class="access-err" id="access-err" role="alert" hidden></p>
             <label class="access-label" for="access-name">Name</label>
-            <div class="access-row"><input type="text" id="access-name" name="name" autocomplete="name" required></div>
+            <div class="access-row"><input type="text" id="access-name" name="name" autocomplete="name" maxlength="200" required></div>
             <label class="access-label" for="access-org">Organization <span class="fine">(optional)</span></label>
-            <div class="access-row"><input type="text" id="access-org" name="organization" autocomplete="organization"></div>
+            <div class="access-row"><input type="text" id="access-org" name="organization" autocomplete="organization" maxlength="200"></div>
             <label class="access-label" for="access-email">Email</label>
             <div class="access-row">
-              <input type="email" id="access-email" name="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" required>
+              <input type="email" id="access-email" name="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="you@example.org" maxlength="254" required>
               <button type="submit" class="btn btn-primary">Request early access</button>
             </div>
+            <div class="access-hp" aria-hidden="true"><label for="access-hp-x">Leave this empty</label><input type="text" id="access-hp-x" name="hp-x" tabindex="-1" autocomplete="off"></div>
+            <span id="access-msg-limit" hidden data-ph="signup-too-many">Too many sign-ups from your network. Please try again in an hour.</span>
+            <span id="access-msg-failed" hidden data-ph="signup-failed">We couldn't sign you up just now. Please try again in a few minutes.</span>
             <p class="fine"><span data-ph="signup-privacy">We use your name, email and organization only to run and improve the alpha. See the privacy notice.</span></p>
             </div>
           </form>
@@ -1097,13 +1104,17 @@ var LCW_START_HASH = location.hash;
   }
   document.querySelectorAll('a[href="#"]').forEach(function(a){ a.addEventListener('click', function(e){ e.preventDefault(); }); });
 })();
-/* Early-access mock-up: checks the email, then shows the "thanks for signing up" state. Nothing is saved. */
+/* Early-access sign-up: checks the fields, sends them to the sign-up service, then shows the "thanks for signing up" state.
+   The service's address is the lcw-signup-api meta tag. While it's empty, this is a mock-up: nothing is sent or saved. */
 (function(){
   var form=document.getElementById('access-form'), input=document.getElementById('access-email'), nameIn=document.getElementById('access-name'),
       err=document.getElementById('access-err'), done=document.getElementById('access-done'),
       to=document.getElementById('access-to'), doneH=document.getElementById('access-done-h'),
-      again=document.getElementById('access-again');
-  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      again=document.getElementById('access-again'), orgIn=document.getElementById('access-org'),
+      trap=document.getElementById('access-hp-x') /* the honeypot; named so browsers' autofill doesn't recognise it */, submit=form.querySelector('button[type=submit]'),
+      api=(document.querySelector('meta[name="lcw-signup-api"]')||{}).content||'';
+  // The same check as the sign-up service's (signup/src/service.mjs): plain ASCII addresses only
+  var EMAIL=/^[A-Za-z0-9_%+'!#$&*=?^{|}~-]+(?:\.[A-Za-z0-9_%+'!#$&*=?^{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,}|xn--[A-Za-z0-9-]+)$/;
   function showErr(msg){ err.textContent=msg; err.hidden=false; input.setAttribute('aria-invalid','true'); input.setAttribute('aria-describedby','access-err'); input.focus(); }
   function clearErr(){ err.hidden=true; err.textContent=''; input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby'); }
   input.addEventListener('input', function(){ if(!err.hidden && EMAIL.test(input.value.trim())) clearErr(); });
@@ -1114,8 +1125,23 @@ var LCW_START_HASH = location.hash;
     nameIn.removeAttribute('aria-invalid'); nameIn.removeAttribute('aria-describedby');
     if(!v){ showErr('Enter your email.'); return; }
     if(!EMAIL.test(v)){ showErr('Check your email address. It should look like name@example.org.'); return; }
-    clearErr(); to.textContent=v; form.hidden=true; done.hidden=false; doneH.focus();
+    clearErr();
+    if(!api){ showDone(v); return; }
+    if(submit.disabled) return;   // already sending
+    submit.disabled=true; form.setAttribute('aria-busy','true');
+    var ctrl=('AbortController' in window)?new AbortController():null, timer=ctrl&&setTimeout(function(){ ctrl.abort(); }, 30000);
+    fetch(api, { method:'POST', headers:{'Content-Type':'application/json'}, signal:ctrl&&ctrl.signal,
+      body:JSON.stringify({ name:nameIn.value.trim(), email:v, organization:orgIn.value.trim(), website:trap.value }) })
+      /* a 429 is the per-network limit only when the service says so; API Gateway's own 429 (its whole-API throttle) isn't this person's doing */
+      .then(function(r){ return r.status===202 ? 'ok' : r.status!==429 ? 'failed' : r.json().then(function(b){ return b && b.reason==='ip-hourly-limit' ? 'limit' : 'failed'; }, function(){ return 'failed'; }); }, function(){ return 'failed'; })
+      .then(function(result){
+        clearTimeout(timer); submit.disabled=false; form.removeAttribute('aria-busy');
+        if(result==='ok') showDone(v);
+        /* not the address's fault, so the email field isn't marked; the message is a role=alert, so it's announced */
+        else { err.textContent=document.getElementById(result==='limit'?'access-msg-limit':'access-msg-failed').textContent; err.hidden=false; }
+      });
   });
+  function showDone(v){ to.textContent=v; form.hidden=true; done.hidden=false; doneH.focus(); }
   again.addEventListener('click', function(){ done.hidden=true; form.hidden=false; input.select(); input.focus(); });
   document.querySelectorAll('a[data-focus]').forEach(function(a){
     a.addEventListener('click', function(){

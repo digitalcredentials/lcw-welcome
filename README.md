@@ -39,8 +39,11 @@ The tests intercept every request to Google Forms, so they never send real feedb
 - `scripts/build.mjs`: builds `dist/`, including a copy of the page at `feedback/index.html`. The page shows the full-page form when it's opened there, so there's only one form to edit.
 - `scripts/serve.mjs`: a small local server for `npm start` and the tests.
 - `PLACEHOLDERS.md`: wording that isn't final yet.
+- `signup/`: the sign-up service the early-access form posts to. See [signup/README.md](signup/README.md).
 
 ## Deploy
+
+Build with `SIGNUP_API` set to the sign-up service's address (its `SignupUrl` output), for example `SIGNUP_API=https://… npm run build`. Without it, the sign-up form is a mock-up that sends nothing, as on the GitHub Pages preview. The sign-up service itself is deployed separately: see [signup/README.md](signup/README.md).
 
 Run `npm run build` and upload `dist/` to a static host, at the root or in a folder (all paths are relative). The host must serve `/feedback` (no trailing slash, since that's what the wallet links to) from `feedback/index.html`, either directly or by redirecting to `/feedback/` with the query string kept. In a folder, it must redirect: served directly at `/folder/feedback`, the page's relative paths point outside the folder. Without the query string, feedback from the wallet isn't marked as coming from the wallet. Most static hosts do this already. CloudFront with an S3 origin doesn't: it needs a small function that rewrites `/feedback` and `/feedback/` to `/feedback/index.html`.
 
@@ -61,7 +64,8 @@ Screenshots go on a separate Google Form (`UPLOAD_FORM`), because a form with an
 - [ ] `PLACEHOLDERS.md` is empty, and no `data-ph` markers are left in `src/index.html`.
 - [ ] Remove the `noindex` meta tag from `src/index.html`, and remove `src/robots.txt`.
 - [ ] Take down the GitHub Pages preview once the page is live at its real address (#9).
-- [ ] Sign-up sends for real. For now it's a mock-up that sends nothing (#3, #4).
+- [ ] Sign-up sends for real: the sign-up service is deployed, and the page is built with `SIGNUP_API` set to its address (#3, #4).
+- [ ] The old shared registration code's row is removed from `pws-coupons`, so only personal codes work (#4).
 - [ ] One test feedback, sent from the live address, arrives in the form's responses (then delete it).
 
 ## License
