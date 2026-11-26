@@ -9,7 +9,7 @@ import { extname, join, normalize } from 'node:path';
 const root = join(process.cwd(), 'dist');
 const port = process.env.PORT ? Number(process.env.PORT) : 4317;
 const base = ('/' + (process.env.BASE || '') + '/').replace(/\/+/g, '/');   // always /…/, however it's written
-const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript' };
+const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.woff2': 'font/woff2' };
 
 createServer(async (req, res) => {
   let url;

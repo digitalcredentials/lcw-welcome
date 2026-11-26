@@ -3,36 +3,23 @@ import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { connect } from 'node:net';
 
-const FORM_POST = /^https:\/\/docs\.google\.com\/forms\/.*\/formResponse/;
-const E = { trying: 'entry.413115414', happened: 'entry.667984208', screenshot: 'entry.991851856', email: 'entry.205670620', device: 'entry.1052076762', source: 'entry.566921339' };
+const MAIN_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSdDSkF4Kzr6SUWyGs7TEgDoIV_HkhxyrIzkMfmYfQjC1qyKsw/viewform';
+const UPLOAD_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSe0O-Rez1ZRr4o8SYriZJFqwP7FmRitGjURSz8tb5L4VQhZFw/viewform';
+const E = { reference: 'entry.991851856', device: 'entry.1052076762', source: 'entry.566921339' };
 const UPLOAD_REF = 'entry.370601510';
+const REF = /^FB-[2-9A-HJ-NP-Z]{6}$/;
 
-// No test may reach a real Google Form, or anything else outside this machine. Posts to the
-// feedback form are captured and answered here (or refused, with failSend); every other outside
-// request is aborted and recorded, Google Fonts included, so the tests also run offline.
-async function guard(context, { failSend = false } = {}) {
-  const posts = [], outside = [];
+// No test may reach a real Google Form, or anything else outside this machine. Every outside
+// request is aborted and recorded, so the tests run offline and can check the page asks for none.
+async function guard(context) {
+  const outside = [];
   await context.route('**/*', route => {
-    const req = route.request(), url = req.url();
+    const url = route.request().url();
     if (url.startsWith('http://localhost:')) return route.continue();
-    if (FORM_POST.test(url) && !failSend) { posts.push(new URLSearchParams(req.postData() || '')); return route.fulfill({ status: 200, body: '' }); }
     outside.push(url);
     return route.abort();
   });
-  return { posts, outside };
-}
-const notFonts = urls => urls.filter(u => !/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(u));
-
-// Clicks "Add screenshots" and returns the address the new tab asked for. The guard blocks the
-// request itself, so the tab ends on an error page; it is closed straight away.
-async function openUpload(context, page) {
-  const [tab, req] = await Promise.all([
-    context.waitForEvent('page'),
-    context.waitForEvent('request', r => r.url().includes('/viewform')),
-    page.click('#fb-up'),
-  ]);
-  await tab.close();
-  return req.url();
+  return { outside };
 }
 
 function trackErrors(page) {
@@ -40,6 +27,12 @@ function trackErrors(page) {
   page.on('pageerror', e => errors.push(e.message));
   return errors;
 }
+
+// How many Figtree faces the browser has loaded, once it's done loading fonts
+const figtreeLoaded = page => page.evaluate(async () => {
+  await document.fonts.ready;
+  return [...document.fonts].filter(f => f.family.replace(/["']/g, '') === 'Figtree' && f.status === 'loaded').length;
+});
 
 test.describe('welcome page', () => {
   test('leaves out the review-only parts and stays out of search engines', async ({ page, context, request }) => {
@@ -51,6 +44,23 @@ test.describe('welcome page', () => {
     expect(await (await request.get('/robots.txt')).text()).toContain('Disallow: /');
   });
 
+  test('loads Figtree from this site and asks nothing of Google or anyone else', async ({ page, context }) => {
+    const { outside } = await guard(context);
+    const fonts = [];
+    page.on('response', r => { if (r.url().endsWith('.woff2')) fonts.push([new URL(r.url()).pathname, r.status(), r.headers()['content-type']]); });
+    await page.goto('/');
+    await page.waitForLoadState('load');
+    expect(await figtreeLoaded(page)).toBeGreaterThan(0);
+    expect(fonts.length).toBeGreaterThan(0);
+    for (const [path, status, type] of fonts) {
+      expect(path).toMatch(/^\/fonts\/figtree-[a-z-]+\.woff2$/);
+      expect(status).toBe(200);
+      expect(type).toBe('font/woff2');
+    }
+    await expect(page.locator('h1').first()).toHaveCSS('font-family', /^"?Figtree"?,/);
+    expect(outside).toEqual([]);
+  });
+
   for (const width of [1280, 390, 320]) {
     test(`lays out at ${width}px with no sideways scroll, broken links or script errors`, async ({ page, context }) => {
       await guard(context);
@@ -60,7 +70,7 @@ test.describe('welcome page', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
       const missing = await page.evaluate(() => [...document.querySelectorAll('a[href^="#"]')]
         .map(a => a.getAttribute('href'))
-        .filter(h => h.length > 1 && h !== '#feedback' && !document.getElementById(h.slice(1))));
+        .filter(h => h.length > 1 && !document.getElementById(h.slice(1))));
       expect(missing).toEqual([]);
       const unloaded = await page.evaluate(() => [...document.images].filter(i => !i.complete || !i.naturalWidth).map(i => i.src));
       expect(unloaded).toEqual([]);
@@ -118,7 +128,7 @@ test.describe('welcome page', () => {
   });
 
   test('sign-up is a mock-up: it checks the fields, shows the done state and sends nothing', async ({ page, context }) => {
-    const { posts, outside } = await guard(context);
+    const { outside } = await guard(context);
     await page.goto('/');
     const submit = page.locator('#access-form button[type=submit]');
     await submit.click();
@@ -132,191 +142,162 @@ test.describe('welcome page', () => {
     await submit.click();
     await expect(page.locator('#access-done')).toBeVisible();
     await expect(page.locator('#access-to')).toHaveText('test@example.org');
-    expect(posts).toEqual([]);
-    expect(notFonts(outside)).toEqual([]);
-  });
-});
-
-test.describe('feedback pop-up', () => {
-  for (const width of [1280, 390]) {
-    test(`#feedback opens it, and the reference matches on both forms (${width}px)`, async ({ page, context }) => {
-      const { posts } = await guard(context);
-      const errors = trackErrors(page);
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto('/#feedback');
-      await expect(page.locator('#fb')).toHaveAttribute('open', '');
-
-      const href = await page.getAttribute('#fb-up', 'href');
-      const ref = new URL(href).searchParams.get(UPLOAD_REF);
-      expect(ref).toMatch(/^FB-[2-9A-HJ-NP-Z]{6}$/);
-
-      await page.check('input[name=trying][value="Get the test badge"]');
-      await page.fill('#fb-happened', 'TEST ONLY: badge email never arrived.');
-      await expect(page.locator('#fb-opened')).toBeHidden();
-      expect(await openUpload(context, page)).toContain(`${UPLOAD_REF}=${ref}`);
-      await expect(page.locator('#fb-opened')).toBeVisible();
-      await expect(page.locator('#fb-ref')).toHaveText(ref);   // shown too, in case the upload form drops it
-      expect(await page.evaluate(() => { const d = document.getElementById('fb'); return d.scrollWidth - d.clientWidth; })).toBeLessThanOrEqual(0);
-
-      await page.click('#fb-send');
-      await expect(page.locator('#fb-done')).toBeVisible();
-      await expect(page.locator('#fb-h')).toHaveText('Thanks for telling us');
-      await expect(page.locator('#fb-done .fbp-only')).toBeHidden();
-      expect(posts).toHaveLength(1);
-      expect(posts[0].get(E.trying)).toBe('Get the test badge');
-      expect(posts[0].get(E.happened)).toBe('TEST ONLY: badge email never arrived.');
-      expect(posts[0].get(E.screenshot)).toBe(`On the upload form, reference ${ref}`);
-      expect(posts[0].get(E.source)).toBe('Link');
-      expect(posts[0].get(E.device)).toMatch(/^(Chrome|Safari|Firefox|Edge|Opera|another browser) on .+ \| Mozilla\/5\.0 .+ \| \d+x\d+$/);
-      expect(posts[0].has(E.email)).toBe(false);
-      expect(posts[0].has('entry.1730067921')).toBe(false);   // the old "Sent from" id
-
-      // Send another: a new reference, and no screenshot line if the upload form isn't opened
-      await page.click('#fb-again');
-      const ref2 = new URL(await page.getAttribute('#fb-up', 'href')).searchParams.get(UPLOAD_REF);
-      expect(ref2).not.toBe(ref);
-      await expect(page.locator('#fb-ref')).toHaveText(ref2);
-      await expect(page.locator('#fb-opened')).toBeHidden();
-      await page.check('input[name=trying][value="Share it"]');
-      await page.fill('#fb-happened', 'TEST ONLY: no screenshots this time.');
-      await page.fill('#fb-email', 'tester@example.org');
-      await page.click('#fb-send');
-      await expect(page.locator('#fb-done')).toBeVisible();
-      expect(posts).toHaveLength(2);
-      expect(posts[1].has(E.screenshot)).toBe(false);
-      expect(posts[1].get(E.email)).toBe('tester@example.org');
-      expect(errors).toEqual([]);
-    });
-  }
-
-  test('?from=<place> records where a #feedback link came from', async ({ page, context }) => {
-    const { posts } = await guard(context);
-    await page.goto('/?from=email#feedback');
-    await page.check('input[name=trying][value="Share it"]');
-    await page.fill('#fb-happened', 'TEST ONLY: from an email.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.source)).toBe('email');
+    expect(outside).toEqual([]);
   });
 
-  test('the Get involved button records where it was opened', async ({ page, context }) => {
-    const { posts } = await guard(context);
+  test('there is no in-page feedback form any more', async ({ page, context }) => {
+    await guard(context);
     await page.goto('/');
-    await page.click('.fb-open[data-source="Landing page: Get involved"]');
-    await expect(page.locator('#fb')).toHaveAttribute('open', '');
-    await page.check('input[name=trying][value="Set up my wallet and space"]');
-    await page.fill('#fb-happened', 'TEST ONLY: from Get involved.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.source)).toBe('Landing page: Get involved');
-    await page.click('#fb-close');
-    await expect(page.locator('#fb')).not.toHaveAttribute('open', '');
-  });
-
-  test('checks the answers before sending', async ({ page, context }) => {
-    const { posts } = await guard(context);
-    await page.goto('/#feedback');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-trying-err')).toHaveText('Choose what you were trying to do.');
-    await expect(page.locator('input[name=trying]').first()).toBeFocused();
-    await page.check('#fb-other-r');
-    await expect(page.locator('#fb-other')).toBeFocused();
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-trying-err')).toContainText('Say what you were trying to do');
-    await page.fill('#fb-other', 'Print my badge');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-happened-err')).toHaveText('Tell us what happened.');
-    await page.fill('#fb-happened', 'TEST ONLY: no print button.');
-    await page.fill('#fb-email', 'nope');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-email-err')).toContainText('Check your email address.');
-    expect(posts).toHaveLength(0);
-    await page.fill('#fb-email', '');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.trying)).toBe('Something else');
-    expect(posts[0].get(E.happened)).toBe('Trying to: Print my badge\n\nTEST ONLY: no print button.');
-  });
-
-  test("if sending fails, it offers Google's own form with the answers filled in", async ({ page, context }) => {
-    await guard(context, { failSend: true });
-    await page.goto('/#feedback');
-    await page.check('input[name=trying][value="Share it"]');
-    await page.fill('#fb-happened', 'TEST ONLY: send fails.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-status')).toContainText("We couldn't send this from here.");
-    const link = page.locator('#fb-status a');
-    const url = new URL(await link.getAttribute('href'));
-    expect(url.pathname).toMatch(/\/viewform$/);
-    expect(url.searchParams.get(E.happened)).toBe('TEST ONLY: send fails.');
-    expect(url.searchParams.get(E.source)).toBe('Link');
-    await expect(page.locator('#fb-form')).toBeVisible();
-    await expect(page.locator('#fb-send')).toBeEnabled();
+    await expect(page.locator('dialog, form#fb-form, #fb')).toHaveCount(0);
+    expect(await page.evaluate(() => /formResponse/.test(document.documentElement.innerHTML))).toBe(false);
   });
 });
 
-test.describe('full feedback page', () => {
+// What the feedback page's two links say, read from the page
+async function links(page) {
+  const main = new URL(await page.getAttribute('#fb-main', 'href'));
+  const up = new URL(await page.getAttribute('#fb-up', 'href'));
+  return { main, up, ref: await page.textContent('#fb-ref') };
+}
+
+test.describe('feedback page', () => {
   for (const width of [1280, 390]) {
-    test(`/feedback?from=wallet shows the form on its own page (${width}px)`, async ({ page, context }) => {
-      const { posts } = await guard(context);
+    test(`/feedback?from=wallet links out to both Google Forms, filled in (${width}px)`, async ({ page, context }) => {
+      const { outside } = await guard(context);
       const errors = trackErrors(page);
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/feedback?from=wallet');
+      await expect(page).toHaveURL(/\/feedback\/\?from=wallet$/);
       await expect(page).toHaveTitle(/^Share feedback · /);
       await expect(page.locator('body')).toHaveClass(/fbp-on/);
-      await expect(page.locator('#fbp-slot #fb-form')).toBeVisible();
-      await expect(page.locator('#fb')).not.toHaveAttribute('open', '');
-      for (const hidden of ['.hero', '#faq', '.site-nav', '#fb-x', '#fb-cancel']) await expect(page.locator(hidden)).toBeHidden();
-      await expect(page.locator('#fb-h')).toHaveAttribute('role', 'heading');
-      await expect(page.locator('#fb-h')).toHaveAttribute('aria-level', '1');
-      await expect(page.locator('#fb-h')).toBeFocused();
+      for (const hidden of ['.hero', '#faq', '.site-nav']) await expect(page.locator(hidden)).toBeHidden();
+      await expect(page.getByRole('heading', { level: 1, name: 'Share feedback' })).toBeVisible();
+      await expect(page.locator('#fbp-h')).toBeFocused();
+      await expect(page.locator('#fbp-wallet')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
-      await page.check('input[name=trying][value="Share it"]');
-      await page.fill('#fb-happened', 'TEST ONLY: full page.');
-      const ref = new URL(await page.getAttribute('#fb-up', 'href')).searchParams.get(UPLOAD_REF);
-      await openUpload(context, page);
-      await page.click('#fb-send');
-      await expect(page.locator('#fb-done')).toBeVisible();
-      await expect(page.locator('#fb-done .fbp-only')).toHaveText('You can close this tab and go back to the wallet.');
-      await expect(page.locator('#fb-close')).toBeHidden();
-      expect(posts[0].get(E.source)).toBe('Feedback page: wallet');
-      expect(posts[0].get(E.screenshot)).toBe(`On the upload form, reference ${ref}`);
+      const { main, up, ref } = await links(page);
+      expect(ref).toMatch(REF);
+      expect(main.origin + main.pathname).toBe(MAIN_FORM);
+      expect(main.searchParams.get('usp')).toBe('pp_url');
+      expect(main.searchParams.get(E.reference)).toBe(ref);
+      expect(main.searchParams.get(E.source)).toBe('Feedback page: wallet');
+      expect(main.searchParams.get(E.device)).toMatch(/^(Chrome|Safari|Firefox|Edge|Opera|another browser) on .+ \| Mozilla\/5\.0 .+ \| \d+x\d+$/);
+      expect(main.searchParams.get(E.device).startsWith(await page.textContent('#fb-device') + ' | ')).toBe(true);
+      expect(up.origin + up.pathname).toBe(UPLOAD_FORM);
+      expect(up.searchParams.get('usp')).toBe('pp_url');
+      expect(up.searchParams.get(UPLOAD_REF)).toBe(ref);
+      expect([...up.searchParams.keys()].sort()).toEqual([UPLOAD_REF, 'usp'].sort());   // the upload form gets only the reference
+
+      // Both open in a new tab, say so to screen readers, and the link the tab asks for is the one on the page
+      for (const id of ['#fb-main', '#fb-up']) {
+        await expect(page.locator(id)).toHaveAttribute('target', '_blank');
+        await expect(page.locator(id)).toHaveAttribute('rel', 'noopener');
+        await expect(page.locator(id)).toHaveAccessibleName(/\(opens Google Forms in a new tab\)$/);
+      }
+      expect(outside).toEqual([]);   // nothing goes to Google until the tester opens a form
+      const [tab] = await Promise.all([context.waitForEvent('page'), page.click('#fb-main')]);
+      await expect.poll(() => outside.length).toBe(1);
+      expect(outside[0]).toBe(main.href);
+      await tab.close();
       expect(errors).toEqual([]);
     });
   }
 
-  test('/feedback without ?from= records "Feedback page"', async ({ page, context }) => {
-    const { posts } = await guard(context);
+  test('/feedback without ?from= records "Feedback page" and leaves out the wallet line', async ({ page, context }) => {
+    await guard(context);
     await page.goto('/feedback');
-    await page.check('input[name=trying][value="Share it"]');
-    await page.fill('#fb-happened', 'TEST ONLY: no from.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.source)).toBe('Feedback page');
+    const { main } = await links(page);
+    expect(main.searchParams.get(E.source)).toBe('Feedback page');
+    await expect(page.locator('#fbp-wallet')).toBeHidden();
   });
 
-  test('the logo goes back to the welcome page, where the pop-up still works', async ({ page, context }) => {
-    const { posts } = await guard(context);
+  test('each visit gets a new reference', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/feedback?from=wallet');
+    const first = (await links(page)).ref;
+    await page.reload();
+    const second = await links(page);
+    expect(second.ref).toMatch(REF);
+    expect(second.ref).not.toBe(first);
+    expect(second.main.searchParams.get(E.reference)).toBe(second.ref);
+    expect(second.up.searchParams.get(UPLOAD_REF)).toBe(second.ref);
+  });
+
+  test('Figtree loads on the feedback page too, one folder down', async ({ page, context }) => {
+    const { outside } = await guard(context);
+    await page.goto('/feedback?from=wallet');
+    await page.waitForLoadState('load');
+    expect(await figtreeLoaded(page)).toBeGreaterThan(0);
+    expect(outside).toEqual([]);
+  });
+
+  for (const from of ['try-it', 'get-involved']) {
+    test(`the welcome page's Share feedback link (${from}) opens the page and records where`, async ({ page, context }) => {
+      await guard(context);
+      await page.goto('/');
+      await page.click(`a[href="feedback/?from=${from}"]`);
+      await expect(page).toHaveURL(`/feedback/?from=${from}`);
+      await expect(page.locator('body')).toHaveClass(/fbp-on/);
+      expect((await links(page)).main.searchParams.get(E.source)).toBe(`Feedback page: ${from}`);
+      await expect(page.locator('#fbp-wallet')).toBeHidden();
+    });
+  }
+
+  test('both Share feedback links on the welcome page go to the feedback page', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/');
+    const hrefs = await page.getByRole('link', { name: 'Share feedback' }).evaluateAll(as => as.map(a => a.getAttribute('href')));
+    expect(hrefs.sort()).toEqual(['feedback/?from=get-involved', 'feedback/?from=try-it']);
+  });
+
+  test('an old #feedback link goes to the feedback page, keeping ?from=', async ({ page, context }) => {
+    await guard(context);
+    const errors = trackErrors(page);
+    await page.goto('/?from=email#feedback');
+    await expect(page).toHaveURL('/feedback/?from=email');
+    expect((await links(page)).main.searchParams.get(E.source)).toBe('Feedback page: email');
+    await page.goto('/#feedback');
+    await expect(page).toHaveURL('/feedback/');
+    expect((await links(page)).main.searchParams.get(E.source)).toBe('Feedback page');
+    expect(errors).toEqual([]);
+  });
+
+  test('#feedback added while the welcome page is open goes to the feedback page', async ({ page, context }) => {
+    await guard(context);
+    await page.goto('/');
+    await page.evaluate(() => { location.hash = '#feedback'; });
+    await expect(page).toHaveURL('/feedback/');
+    await expect(page.locator('body')).toHaveClass(/fbp-on/);
+  });
+
+  test('#feedback on the feedback page stays there', async ({ page, context }) => {
+    await guard(context);
+    const errors = trackErrors(page);
+    await page.goto('/feedback?from=wallet#feedback');
+    await expect(page.locator('body')).toHaveClass(/fbp-on/);
+    const ref = (await links(page)).ref;
+    await page.evaluate(() => { window.notReloaded = true; location.hash = '#feedback'; });
+    await expect(page).toHaveURL('/feedback/?from=wallet');
+    await expect(page.locator('#fbp-h')).toBeFocused();
+    expect(await page.evaluate(() => window.notReloaded)).toBe(true);
+    expect((await links(page)).ref).toBe(ref);
+    expect(errors).toEqual([]);
+  });
+
+  test('the logo goes back to the welcome page', async ({ page, context }) => {
+    await guard(context);
     await page.goto('/feedback?from=wallet');
     await page.click('.site-header .brand');
     await expect(page).toHaveURL('/');
     await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
     await expect(page.locator('.hero')).toBeVisible();
-    await page.click('.fb-open[data-source="Landing page: Get involved"]');
-    await expect(page.locator('#fb #fb-form')).toBeVisible();
-    await expect(page.locator('#fb-cancel')).toBeVisible();
-    await page.check('input[name=trying][value="Get the test badge"]');
-    await page.fill('#fb-happened', 'TEST ONLY: pop-up after the page.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.source)).toBe('Landing page: Get involved');
   });
 
-  test('/feedback/index.html is the full page too, and other paths are not', async ({ page, context }) => {
+  test('/feedback/index.html is the feedback page too, and other paths are not', async ({ page, context }) => {
     await guard(context);
     await page.goto('/feedback/index.html?from=wallet');
-    await expect(page.locator('#fbp-slot #fb-form')).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/fbp-on/);
     await page.goto('/index.html');
     await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
     await expect(page.locator('.hero')).toBeVisible();
@@ -334,34 +315,7 @@ test.describe('full feedback page', () => {
     expect((await request.get('/')).status()).toBe(200);
   });
 
-  test('#feedback on the full page keeps the form on the page', async ({ page, context }) => {
-    await guard(context);
-    const errors = trackErrors(page);
-    await page.goto('/feedback#feedback');
-    await expect(page.locator('body')).toHaveClass(/fbp-on/);
-    await expect(page.locator('#fb')).not.toHaveAttribute('open', '');
-    await page.evaluate(() => { location.hash = '#feedback'; });
-    await expect(page.locator('#fb')).not.toHaveAttribute('open', '');
-    await expect(page.locator('#fb-h')).toBeFocused();
-    expect(errors).toEqual([]);
-  });
-
-  test('#feedback added while the welcome page is open opens the pop-up without reloading', async ({ page, context }) => {
-    await guard(context);
-    const errors = trackErrors(page);
-    await page.goto('/');
-    const before = await page.evaluate(() => history.length);
-    await page.evaluate(() => { window.notReloaded = true; location.hash = '#feedback'; });
-    await expect(page.locator('#fb')).toHaveAttribute('open', '');
-    await page.waitForTimeout(300);
-    expect(await page.evaluate(() => window.notReloaded)).toBe(true);
-    await expect(page.locator('#fb')).toHaveAttribute('open', '');
-    expect(page.url()).toMatch(/\/$/);   // no "#feedback", and no bare "#" either
-    expect(await page.evaluate(() => history.length)).toBe(before + 1);   // the hash change only, so Back works once
-    expect(errors).toEqual([]);
-  });
-
-  test('Back and Forward move between the welcome page and the full page', async ({ page, context }) => {
+  test('Back and Forward move between the welcome page and the feedback page', async ({ page, context }) => {
     await guard(context);
     await page.goto('/');
     await page.goto('/feedback?from=wallet');
@@ -370,7 +324,7 @@ test.describe('full feedback page', () => {
     await expect(page.locator('body')).not.toHaveClass(/fbp-on/);
     await page.goForward();
     await expect(page.locator('body')).toHaveClass(/fbp-on/);
-    await expect(page.locator('#fbp-slot #fb-form')).toBeVisible();
+    await expect(page.locator('#fb-main')).toBeVisible();
   });
 });
 
@@ -389,8 +343,8 @@ test.describe('served in a folder, as on GitHub Pages', () => {
   const imagesLoaded = page => page.evaluate(() => [...document.images].every(i => i.complete && i.naturalWidth > 0));
   const iconLoads = page => page.evaluate(async () => (await fetch(document.querySelector('link[rel=icon]').href)).ok);
 
-  test('the welcome page loads its images and icon', async ({ page, context }) => {
-    await guard(context);
+  test('the welcome page loads its images, icon and font', async ({ page, context }) => {
+    const { outside } = await guard(context);
     const errors = trackErrors(page);
     await page.goto(ROOT + '/lcw-welcome');
     await expect(page).toHaveURL(ROOT + BASE);
@@ -399,11 +353,13 @@ test.describe('served in a folder, as on GitHub Pages', () => {
     await page.waitForLoadState('load');
     expect(await imagesLoaded(page)).toBe(true);
     expect(await iconLoads(page)).toBe(true);
+    expect(await figtreeLoaded(page)).toBeGreaterThan(0);
+    expect(outside).toEqual([]);
     expect(errors).toEqual([]);
   });
 
-  test('/feedback?from=wallet is the full page, sends from the wallet, and the logo goes back', async ({ page, context }) => {
-    const { posts } = await guard(context);
+  test('/feedback?from=wallet is the feedback page, with its font, and the logo goes back', async ({ page, context }) => {
+    const { outside } = await guard(context);
     const errors = trackErrors(page);
     await page.goto(ROOT + BASE + 'feedback?from=wallet');
     await expect(page).toHaveURL(ROOT + BASE + 'feedback/?from=wallet');
@@ -411,14 +367,22 @@ test.describe('served in a folder, as on GitHub Pages', () => {
     await page.waitForLoadState('load');
     expect(await imagesLoaded(page)).toBe(true);
     expect(await iconLoads(page)).toBe(true);
-    await page.check('input[name=trying][value="Get the test badge"]');
-    await page.fill('#fb-happened', 'TEST ONLY: in a folder.');
-    await page.click('#fb-send');
-    await expect(page.locator('#fb-done')).toBeVisible();
-    expect(posts[0].get(E.source)).toBe('Feedback page: wallet');
+    expect(await figtreeLoaded(page)).toBeGreaterThan(0);
+    expect((await links(page)).main.searchParams.get(E.source)).toBe('Feedback page: wallet');
+    expect(outside).toEqual([]);
     await page.click('.site-header .brand');
     await expect(page).toHaveURL(ROOT + BASE);
     await expect(page.locator('.hero')).toBeVisible();
     expect(errors).toEqual([]);
+  });
+
+  test('the Share feedback links and #feedback stay in the folder', async ({ page, context }) => {
+    await guard(context);
+    await page.goto(ROOT + BASE);
+    await page.click('a[href="feedback/?from=get-involved"]');
+    await expect(page).toHaveURL(ROOT + BASE + 'feedback/?from=get-involved');
+    await page.goto(ROOT + BASE + '?from=email#feedback');
+    await expect(page).toHaveURL(ROOT + BASE + 'feedback/?from=email');
+    await expect(page.locator('body')).toHaveClass(/fbp-on/);
   });
 });
