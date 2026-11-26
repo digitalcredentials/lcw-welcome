@@ -62,4 +62,23 @@ const { check, done } = checker();
     ses.restore();
 }
 
+// --- A stalled SES call gives up, instead of running until the function times out
+{
+    const { createServer } = await import("node:net");
+    const sockets = [];
+    const server = createServer((socket) => sockets.push(socket));   // accepts, never answers
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const ses = new SESv2Client({ region: "us-east-1", endpoint: `http://127.0.0.1:${server.address().port}`, credentials: { accessKeyId: "x", secretAccessKey: "x" }, maxAttempts: 1 });
+    const send = sesMailer({ from: "support@lcw.app", ses, timeoutMs: 300 });
+    const started = Date.now();
+    let error;
+    // The test's own limit, so a send with no time limit fails here instead of hanging
+    const tooLong = new Promise((resolve) => setTimeout(resolve, 3000).unref());
+    try { await Promise.race([send({ to: "ann@example.org", subject: "S", text: "T", html: "H" }), tooLong]); } catch (e) { error = e; }
+    const took = Date.now() - started;
+    check("a send SES never answers fails after the time limit", error !== undefined && took >= 250 && took < 3000, { took, error: error?.name });
+    sockets.forEach((socket) => socket.destroy());
+    server.close();
+}
+
 done();

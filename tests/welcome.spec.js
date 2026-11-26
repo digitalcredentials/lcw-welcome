@@ -237,7 +237,7 @@ test.describe('sign-up, sending to the sign-up service', () => {
     await page.click('#access-form button[type=submit]');
     await expect(page.locator('#access-err')).toHaveText('Enter your name.');
     // The same addresses the sign-up service refuses: no display names, no non-ASCII
-    for (const email of ['not-an-email', 'x<victim@example.org>', 'a,b@example.org', 'josé@example.org', 'a@example']) {
+    for (const email of ['not-an-email', 'x<victim@example.org>', 'a,b@example.org', 'josé@example.org', 'a@example', 'a..b@example.org', '.a@example.org', 'a@-example.org']) {
       await fillSignup(page, { email });
       await page.click('#access-form button[type=submit]');
       await expect(page.locator('#access-err')).toContainText('Check your email address.');

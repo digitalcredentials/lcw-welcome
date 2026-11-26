@@ -298,7 +298,7 @@ async function refresh() {
   document.getElementById("api").className = s.apiDown ? "bad" : "";
   document.getElementById("last").textContent = s.lastInvite ? "Last \\"invite the next N\\": " + JSON.stringify(s.lastInvite) : "";
   table(document.getElementById("signups"), ["Signed up", "Email", "Name", "Organization", "Status", "Code", "Invited", "Last emailed"],
-    s.signups.map((r) => [time(r.signedUpAt), r.email, r.name, r.organization, el("span", r.status, r.status === "invited" ? "ok" : r.status === "inviting" ? "warn" : ""), r.code, time(r.invitedAt), time(r.lastEmailedAt)]));
+    s.signups.map((r) => [time(r.signedUpAt), r.email, r.name, r.organization, el("span", r.status, r.status === "invited" ? "ok" : r.status === "inviting" ? "warn" : r.status === "failed" ? "bad" : ""), r.code, time(r.invitedAt), time(r.lastEmailedAt)]));
   table(document.getElementById("outbox"), ["Sent", "From", "To", "Subject", "Open"],
     s.outbox.slice().reverse().map((m) => { const a = el("a", "Open the email"); a.href = "/_smoke/email/" + m.i; a.target = "_blank"; return [time(m.at), m.from, m.to, m.subject, a]; }));
   const log = document.getElementById("log"); log.replaceChildren();

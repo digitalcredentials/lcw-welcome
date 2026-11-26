@@ -3,17 +3,21 @@
 // other (the condition on each write) are in one place.
 //
 // Sign-ups table, one row per email address (lowercased):
-//   email, name, organization, signedUpAt, status, and once invited:
-//   code, link, expiresAt (the code's), invitedAt, lastEmailedAt
+//   email, name, organization, signedUpAt, status, autoInvite, and once invited:
+//   code, link, expiresAt (the code's), invitedAt, lastEmailedAt, resends
+//   (re-sends so far), and failures (invites that failed, if any)
 // status is "queued" (waiting), "inviting" (an invite is being sent right
-// now, since claimedAt) or "invited". An invite still "inviting" after a
+// now, since claimedAt), "invited", or "failed" (its invite failed too many
+// times, so it's out of the queue until someone puts it back). An invite still "inviting" after a
 // while didn't finish (a timeout, say), so it counts as queued again. A code
 // is kept on the row as soon as it's made, so finishing that invite later
 // sends the same code. The status-index (status, signedUpAt) lists the
 // queue in sign-up order.
 //
-// A sign-up given one of the first-N places has autoInvite = 1. If its invite
-// fails, it keeps the place and stays queued, first in line, until it's tried again.
+// A sign-up given one of the first-N places has autoInvite = 1, and one that
+// wasn't has 0. (None at all means an error cut the sign-up short before that
+// was decided.) If a first-N invite fails, it keeps the place and stays
+// queued, first in line, until it's tried again.
 //
 // Each step of an invite after the claim (saveCode, release, markInvited)
 // checks claimedAt is still the claim it made, so an invite that was too slow
@@ -22,7 +26,8 @@
 // Counters table, one row per counter: key, n, and removeAt (epoch seconds;
 // DynamoDB deletes the row after it) on counters that only matter for a while:
 //   auto-invites           how many of the first-N places are taken
-//   emails#<YYYY-MM-DD>    emails sent that day (UTC)
+//   emails#<YYYY-MM-DD>    invite emails sent that day (UTC)
+//   resends#<YYYY-MM-DD>   re-sent invites that day (UTC)
 //   ip#<hash>#<hour>       sign-ups from one network in one hour, kept 2 hours: an
 //                          IPv4 address, or an IPv6 /64, as an unsalted hash (it
 //                          hides the address at a glance, but someone who can read
@@ -77,14 +82,15 @@ export function dynamoStore({
             return done !== false;
         },
 
-        // Records that a sign-up has one of the first-N places
-        async markAutoInvite(email) {
+        // Records whether a sign-up has one of the first-N places (1) or not (0),
+        // once: refused if the row isn't there or already has an answer
+        async markAutoInvite(email, value) {
             await client.send(new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
-                UpdateExpression: "SET autoInvite = :one",
-                ConditionExpression: "attribute_exists(email)",
-                ExpressionAttributeValues: { ":one": N(1) }
+                UpdateExpression: "SET autoInvite = :value",
+                ConditionExpression: "attribute_exists(email) AND attribute_not_exists(autoInvite)",
+                ExpressionAttributeValues: { ":value": N(value) }
             }));
         },
 
@@ -117,15 +123,19 @@ export function dynamoStore({
         },
 
         // Puts a sign-up whose invite didn't go out back in the queue, in its
-        // old place (its signedUpAt is unchanged)
-        async release(email, claimedAt) {
+        // old place (its signedUpAt is unchanged). With failed, counts a failure;
+        // with giveUp, sets it aside as "failed" instead, out of the queue.
+        async release(email, claimedAt, { failed = false, giveUp = false } = {}) {
             await conditional(client, new UpdateItemCommand({
                 TableName: signupsTable,
                 Key: key(email),
-                UpdateExpression: "SET #status = :queued",
+                UpdateExpression: "SET #status = :status" + (failed ? " ADD failures :one" : ""),
                 ConditionExpression: "#status = :inviting AND claimedAt = :claimedAt",
                 ExpressionAttributeNames: { "#status": "status" },
-                ExpressionAttributeValues: { ":queued": S("queued"), ":inviting": S("inviting"), ":claimedAt": S(claimedAt) }
+                ExpressionAttributeValues: {
+                    ":status": S(giveUp ? "failed" : "queued"), ":inviting": S("inviting"), ":claimedAt": S(claimedAt),
+                    ...(failed && { ":one": N(1) })
+                }
             }));
         },
 

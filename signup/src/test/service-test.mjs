@@ -1,6 +1,6 @@
 // The sign-up rules, run against an in-memory store and fake minter and mailer.
 //   cd signup/src && npm test
-import { makeService } from "../service.mjs";
+import { makeService, describeError } from "../service.mjs";
 import { inviteEmail } from "../email.mjs";
 import { memoryStore, fakeMinter, fakeMailer, quietLog, manualClock, checker } from "./helpers.mjs";
 
@@ -9,7 +9,7 @@ const HOUR = 3_600_000;
 
 function setup(overrides = {}) {
     const store = memoryStore(), mintCode = fakeMinter(), sendEmail = fakeMailer(), log = quietLog(), clock = manualClock();
-    const config = { autoInviteLimit: 3, dailyEmailCap: 100, ipHourlyLimit: 100, resendGapMinutes: 60, resendDailyCap: 100, maxResends: 100, maxBatch: 100, ...overrides };
+    const config = { autoInviteLimit: 3, dailyEmailCap: 100, ipHourlyLimit: 100, resendGapMinutes: 60, resendDailyCap: 100, maxResends: 100, maxFailures: 3, maxBatch: 100, ...overrides };
     const service = makeService({ store, mintCode, sendEmail, config, log, clock });
     let n = 0;
     // Signs someone up a millisecond after the last, from their own IP address unless told otherwise
@@ -344,10 +344,11 @@ for (const what of ["mintCode", "sendEmail"]) {
 // --- The email check: plain ASCII addresses only
 {
     const t = setup();
-    const bad = ["x<victim@example.org>", "a@b.c>", "\"a b\"@example.org", "a,b@example.org", "a;b@example.org", "(a)b@example.org", "jos\u00e9@example.org", "a@ex\u00e4mple.org", "a@example", "a@example.c"];
+    const bad = ["x<victim@example.org>", "a@b.c>", "\"a b\"@example.org", "a,b@example.org", "a;b@example.org", "(a)b@example.org", "jos\u00e9@example.org", "a@ex\u00e4mple.org", "a@example", "a@example.c",
+        ".a@example.org", "a.@example.org", "a..b@example.org", "a@.example.org", "a@example..org", "a@-example.org", "a@example-.org"];
     const answers = [];
     for (const email of bad) answers.push(await t.signUp(person(1, { email })));
-    check("addresses with < > \" , ; ( ), non-ASCII or no proper domain are refused with 400", answers.every((a) => a.status === 400), bad.filter((_, i) => answers[i].status !== 400));
+    check("addresses with < > \" , ; ( ), non-ASCII, no proper domain, or dots and hyphens where SES refuses them, are refused with 400", answers.every((a) => a.status === 400), bad.filter((_, i) => answers[i].status !== 400));
     check("...and nothing is stored or sent", t.store.signups.size === 0 && t.sendEmail.sent.length === 0);
     const good = ["a.b+tag@example.org", "o'brien@mail.example.co.uk", "A_B-C%d@Example-Mail.ORG"];
     for (const email of good) await t.signUp(person(2, { email }));
@@ -362,6 +363,98 @@ for (const what of ["mintCode", "sendEmail"]) {
     const answer = await t.signUp(person(1));
     check("a failed re-send is undone even if giving back today's email fails, and the form still gets 202",
         answer.status === 202 && t.store.signups.get("p1@example.org").lastEmailedAt === "2026-12-15T15:00:00.001Z" && t.log.lines.some((l) => l.includes("Couldn't give back")));
+}
+
+// --- The same form sent several times at once takes one first-N place
+{
+    const t = setup({ autoInviteLimit: 3 });
+    const answers = await Promise.allSettled([1, 2, 3].map(() => t.service.signUp(person(1), "10.0.0.1")));
+    check("the same sign-up sent 3 times at once: all get 202, and one place, one code, one email",
+        answers.every((a) => a.value?.status === 202) && t.store.counters.get("auto-invites") === 1 && t.mintCode.calls.length === 1 && t.sendEmail.sent.length === 1, answers.map((a) => a.value?.status ?? a.reason?.message));
+}
+
+// --- A sign-up cut short before its first-N place was decided gets it decided when they try again
+{
+    const t = setup({ autoInviteLimit: 3 });
+    const markAutoInvite = t.store.markAutoInvite;
+    t.store.markAutoInvite = async () => { throw new Error("throttled"); };
+    let threw = false;
+    try { await t.signUp(person(1)); } catch { threw = true; }
+    t.store.markAutoInvite = markAutoInvite;
+    check("cut short: the request fails, the row is there with no answer, and the place is given back", threw && t.store.signups.get("p1@example.org").autoInvite === undefined && t.store.counters.get("auto-invites") === 0);
+    t.clock.advance(30_000);
+    await t.signUp(person(1));
+    check("trying again within a minute does nothing yet (it could be the same form sent twice)", t.store.signups.get("p1@example.org").autoInvite === undefined && t.sendEmail.sent.length === 0);
+    t.clock.advance(60_000);
+    await t.signUp(person(1));
+    check("trying again after a minute gives them their first-N place and invites them", t.store.signups.get("p1@example.org").autoInvite === 1 && t.store.signups.get("p1@example.org").status === "invited" && t.store.counters.get("auto-invites") === 1);
+}
+{
+    const t = setup({ autoInviteLimit: 1 });
+    await t.signUp(person(1));
+    await t.signUp(person(2));
+    check("someone after the first N has autoInvite 0 on their row", t.store.signups.get("p2@example.org").autoInvite === 0);
+    t.clock.advance(2 * HOUR);
+    await t.signUp(person(2));
+    check("...and signing up again later doesn't decide it again", t.store.counters.get("auto-invites") === 1 && t.store.signups.get("p2@example.org").status === "queued");
+}
+
+// --- An invite that keeps failing is set aside, so it can't sit at the front of the queue
+{
+    const t = setup({ autoInviteLimit: 0 });
+    for (let i = 1; i <= 3; i++) await t.signUp(person(i));
+    t.sendEmail.fail = (m) => m.to === "p1@example.org";
+    await t.service.inviteNext({ count: 1 });
+    await t.service.inviteNext({ count: 1 });
+    check("after 2 failures, it's still queued, first, with 2 failures counted", t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === 2);
+    const third = await t.service.inviteNext({ count: 1 });
+    check("the 3rd failure sets it aside as \"failed\", and says so in the log", third.failed.join() === "p1@example.org" && t.store.signups.get("p1@example.org").status === "failed" && t.log.lines.some((l) => l.includes("set aside as \"failed\"")));
+    check("...and gives back today's emails each time", (t.store.counters.get("emails#2026-12-15") ?? 0) === 0);
+    const dry = await t.service.inviteNext({ count: 3, dryRun: true });
+    check("the queue no longer lists it", dry.wouldInvite.map((p) => p.email).join() === "p2@example.org,p3@example.org");
+    await t.signUp(person(1));
+    check("signing up again doesn't try it again", t.store.signups.get("p1@example.org").status === "failed");
+    const rest = await t.service.inviteNext({ count: 3 });
+    check("the others are invited", rest.invited.join() === "p2@example.org,p3@example.org");
+}
+{
+    const t = setup({ autoInviteLimit: 0, dailyEmailCap: 0 });
+    await t.signUp(person(1));
+    for (let i = 0; i < 4; i++) await t.service.inviteNext({ count: 1 });
+    check("the daily cap stopping an invite doesn't count as a failure", t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined);
+}
+{
+    const t = setup({ autoInviteLimit: 0 });
+    await t.signUp(person(1));
+    const saveCode = t.store.saveCode;
+    t.store.saveCode = async () => { throw new Error("throttled"); };
+    for (let i = 0; i < 4; i++) await t.service.inviteNext({ count: 1 });
+    t.store.saveCode = saveCode;
+    check("a table error doesn't count against the person either", t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined);
+}
+{
+    const t = setup({ autoInviteLimit: 0 });
+    for (let i = 1; i <= 5; i++) await t.signUp(person(i));
+    t.mintCode.fail = true;
+    const answer = await t.service.inviteNext({ count: 5 });
+    check("3 failures in a row stop the run (lcw-back-end or SES is probably down), and it says so",
+        answer.failed.length === 3 && answer.stoppedOnFailures === true && t.mintCode.calls.length === 3 && t.log.lines.some((l) => l.includes("3 invites failed in a row")));
+    check("...and the rest aren't tried, so nothing is counted against them", [4, 5].every((i) => t.store.signups.get(`p${i}@example.org`).status === "queued" && t.store.signups.get(`p${i}@example.org`).failures === undefined));
+    const three = await (async () => { const u = setup({ autoInviteLimit: 0 }); for (let i = 1; i <= 3; i++) await u.signUp(person(i)); u.mintCode.fail = true; return u.service.inviteNext({ count: 3 }); })();
+    check("failing the last one isn't called stopping", three.failed.length === 3 && three.stoppedOnFailures === false);
+}
+
+// --- No email addresses in the logs
+{
+    const t = setup({ autoInviteLimit: 1 });
+    t.sendEmail.fail = true;   // its error names the address, as SES's can
+    await t.signUp(person(1));
+    check("an SES error naming the address is logged without it", t.log.lines.some((l) => l.includes("INVITE_FAILED") && l.includes("MessageRejected") && l.includes("[an address]")) && !t.log.lines.some((l) => l.includes("p1@example.org")));
+    const error = new Error("Email address is not verified: Ann.O'Brien+x@mail.example.co.uk, b@c.org");
+    check("describeError takes every address out", describeError(error) === "Error: Email address is not verified: [an address], [an address]");
+    const withPath = new Error("x");
+    withPath.stack = "Error: x\n    at send (/var/task/node_modules/@aws-sdk/client-sesv2/dist-cjs/index.js:1:2)";
+    check("...including from the stack, but keeps file paths with @ in them", !describeError(error, { stack: true }).includes("example") && describeError(withPath, { stack: true }) === withPath.stack);
 }
 
 // --- An invite taken over after it went stale can't be undone or finished by the slow one

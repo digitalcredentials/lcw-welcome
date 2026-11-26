@@ -39,12 +39,14 @@ export function codeMinter({ url = process.env.REGISTRATION_CODES_URL, apiKey, f
     };
 }
 
-export function sesMailer({ from = process.env.FROM_EMAIL, ses = new SESv2Client() } = {}) {
+// Sends one email. Gives up after timeoutMs, so a stalled send fails while
+// there's still time to put the sign-up back, well inside the function's timeout.
+export function sesMailer({ from = process.env.FROM_EMAIL, ses = new SESv2Client(), timeoutMs = 5000 } = {}) {
     return async ({ to, subject, text, html }) => {
         await ses.send(new SendEmailCommand({
             FromEmailAddress: from,
             Destination: { ToAddresses: [to] },
             Content: { Simple: { Subject: { Data: subject, Charset: "UTF-8" }, Body: { Text: { Data: text, Charset: "UTF-8" }, Html: { Data: html, Charset: "UTF-8" } } } }
-        }));
+        }), { abortSignal: AbortSignal.timeout(timeoutMs) });
     };
 }

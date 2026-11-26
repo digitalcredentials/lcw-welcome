@@ -40,7 +40,7 @@ async function setup(suffix, overrides = {}) {
     const tables = await freshTables(suffix);
     const store = dynamoStore({ client, ...tables });
     const mintCode = fakeMinter(), sendEmail = fakeMailer(), log = quietLog(), clock = manualClock();
-    const config = { autoInviteLimit: 10, dailyEmailCap: 1000, ipHourlyLimit: 1000, resendGapMinutes: 60, resendDailyCap: 1000, maxResends: 100, maxBatch: 100, ...overrides };
+    const config = { autoInviteLimit: 10, dailyEmailCap: 1000, ipHourlyLimit: 1000, resendGapMinutes: 60, resendDailyCap: 1000, maxResends: 100, maxFailures: 3, maxBatch: 100, ...overrides };
     // A small delay in minting, so requests that arrive together really overlap
     const slowMint = async (email) => { await new Promise((r) => setTimeout(r, 5)); return mintCode(email); };
     slowMint.calls = mintCode.calls;
@@ -74,8 +74,9 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
 // --- One person presses Send ten times at once
 {
     const t = await setup("double");
-    await Promise.all(Array.from({ length: 10 }, () => t.service.signUp(person(1), "10.0.0.1")));
-    check("ten sign-ups at once with one email: one invite, one code", t.sendEmail.sent.length === 1 && t.mintCode.calls.length === 1);
+    const answers = await Promise.allSettled(Array.from({ length: 10 }, () => t.service.signUp(person(1), "10.0.0.1")));
+    check("ten sign-ups at once with one email: all get 202, one invite, one code",
+        answers.every((a) => a.value?.status === 202) && t.sendEmail.sent.length === 1 && t.mintCode.calls.length === 1, answers.map((a) => a.value?.status ?? a.reason?.name));
     check("...and one first-N place taken", (await t.store.count("auto-invites")) === 1);
     check("...and one row, invited", (await t.store.getSignup("p1@example.org")).status === "invited");
     t.clock.advance(2 * 3_600_000);
@@ -168,15 +169,40 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("releasing an invited row does nothing", (await t.store.getSignup("p1@example.org")).status === "invited");
 }
 
-// --- Recording a first-N place needs the row to be there
+// --- Recording a first-N place: once, and only on a row that's there
 {
     const t = await setup("mark", { autoInviteLimit: 0 });
-    await t.service.signUp(person(1), "10.0.6.1");
-    await t.store.markAutoInvite("p1@example.org");
+    await t.store.createSignup({ email: "p1@example.org", name: "P1", signedUpAt: "2026-12-15T15:00:00.000Z" });
+    await t.store.markAutoInvite("p1@example.org", 1);
     check("markAutoInvite records the place", (await t.store.getSignup("p1@example.org")).autoInvite === 1);
+    let again = false;
+    try { await t.store.markAutoInvite("p1@example.org", 0); } catch (e) { again = e.name === "ConditionalCheckFailedException"; }
+    check("...once: a second answer is refused and the first kept", again && (await t.store.getSignup("p1@example.org")).autoInvite === 1);
     let refused = false;
-    try { await t.store.markAutoInvite("nobody@example.org"); } catch (e) { refused = e.name === "ConditionalCheckFailedException"; }
+    try { await t.store.markAutoInvite("nobody@example.org", 1); } catch (e) { refused = e.name === "ConditionalCheckFailedException"; }
     check("...and is refused for an address that hasn't signed up (no row made)", refused && (await t.store.getSignup("nobody@example.org")) === null);
+    await t.service.signUp(person(2), "10.0.6.2");
+    check("a sign-up after the first N has autoInvite 0", (await t.store.getSignup("p2@example.org")).autoInvite === 0);
+}
+
+// --- Failures are counted, and one that keeps failing is set aside out of the queue
+{
+    const t = await setup("failed", { autoInviteLimit: 0 });
+    for (let i = 1; i <= 2; i++) { t.clock.advance(1000); await t.service.signUp(person(i), `10.0.7.${i}`); }
+    t.sendEmail.fail = (m) => m.to === "p1@example.org";
+    await t.service.inviteNext({ count: 1 });
+    await t.service.inviteNext({ count: 1 });
+    let row = await t.store.getSignup("p1@example.org");
+    check("two failures: still queued, with 2 counted", row.status === "queued" && row.failures === 2);
+    await t.service.inviteNext({ count: 1 });
+    row = await t.store.getSignup("p1@example.org");
+    check("the 3rd sets it aside as \"failed\", keeping its details", row.status === "failed" && row.failures === 3 && row.name === "Person 1");
+    const dry = await t.service.inviteNext({ count: 5, dryRun: true });
+    check("...and the queue (status-index) no longer lists it", dry.wouldInvite.map((p) => p.email).join() === "p2@example.org");
+    const claimedAt = "2026-12-15T16:00:00.000Z";
+    await t.store.claim("p2@example.org", claimedAt, "");
+    await t.store.release("p2@example.org", claimedAt);
+    check("a release without failed (the daily cap) counts nothing", (await t.store.getSignup("p2@example.org")).failures === undefined && (await t.store.getSignup("p2@example.org")).status === "queued");
 }
 
 // --- Undoing a re-send's time
@@ -206,7 +232,7 @@ const statuses = async (store, n) => Promise.all(Array.from({ length: n }, (_, i
     check("10 re-sends at once with maxResends 2: exactly 2 go", results.filter(Boolean).length === 2 && (await t.store.getSignup("p2@example.org")).resends === 2, results);
 }
 
-for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark", "mark"]) {
+for (const suffix of ["burst", "double", "ip", "cap", "order", "stuck", "owner", "unmark", "mark", "failed"]) {
     for (const name of [`signups-${suffix}`, `counters-${suffix}`]) await client.send(new DeleteTableCommand({ TableName: name }));
 }
 done();

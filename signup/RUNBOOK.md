@@ -19,7 +19,12 @@ After the first deploy (see README.md):
   - the invite arrives from support@lcw.app, and not in spam;
   - its link opens the wallet's register page with the code filled in;
   - an account can be made with that code.
-- [ ] Remove that test sign-up from the table (see "Removing someone"), so it doesn't hold one of the first 100.
+- [ ] Remove that test sign-up from the table (see "Removing someone"), then give its first-100 place back, since removing a row doesn't:
+  ```bash
+  aws dynamodb update-item --table-name lcw-welcome-counters --key '{"key":{"S":"auto-invites"}}' \
+    --update-expression "ADD n :minus" --condition-expression "n > :zero" \
+    --expression-attribute-values '{":minus":{"N":"-1"},":zero":{"N":"0"}}'
+  ```
 - [ ] The rest of the launch list in the top-level README.md is done (the old shared code removed from `pws-coupons`, and so on).
 
 ## Day to day
@@ -41,14 +46,14 @@ aws lambda invoke --function-name lcw-welcome-invite --cli-binary-format raw-in-
   --payload '{"count": 25}' /dev/stdout
 ```
 
-The answer lists who was invited, anyone who failed, and `capReached` if it stopped at the cap.
+The answer lists who was invited and anyone who failed. `capReached` means it stopped at the daily cap; `stoppedOnFailures` means it stopped after 3 failures in a row (see the alerts below).
 
 ## When an alert arrives
 
 | Alert | What it means | What to do |
 |---|---|---|
 | `lcw-welcome-daily-email-cap-reached` | Today's emails (UTC) reached `DailyEmailCap`. No more invites go out until tomorrow (UTC). Nobody is lost: they stay queued, and anyone among the first 100 keeps their place. | Look at today's sign-ups. **If they look real**, raise `DailyEmailCap` (redeploy) or wait for tomorrow, then run "invite the next N". **If they look like junk**, see "A flood of junk sign-ups". |
-| `lcw-welcome-signup-problems` | An invite failed, or a sign-up did. The person is back in their place in the queue. | Read the log (below). **"(making the code)"** means lcw-back-end's `/registration-codes` is failing: tell James. **"(sending the email)"** means SES is failing: check SES in the console (sending paused, a quota, the domain). Once fixed, run "invite the next N"; the people who failed go first. |
+| `lcw-welcome-signup-problems` | An invite failed, or a sign-up did. The person is back in their place in the queue, unless their invite has now failed 3 times. | Read the log (below). **"(making the code)"** means lcw-back-end's `/registration-codes` is failing: tell James. **"(sending the email)"** means SES is failing: check SES in the console (sending paused, a quota, the domain). **"3 invites failed in a row"** means one of those is down for everyone. Once fixed, run "invite the next N"; the people who failed go first. **"set aside as failed"** means one person's invite failed 3 times: see "Failed sign-ups". |
 | `lcw-welcome-signup-function-errors` / `lcw-welcome-invite-function-errors` | A function crashed or timed out. | Read its log. An invite cut off partway is finished by the next "invite the next N" after 15 minutes, with the code already made. |
 
 Reading the logs:
@@ -73,11 +78,12 @@ aws dynamodb get-item --table-name lcw-welcome-signups --key '{"email":{"S":"per
 - **`queued`:** they haven't been invited yet. They're emailed when their group is let in.
 - **`invited`:** ask them to check spam. Signing up again on the page re-sends the same code, once an hour, up to 3 times (`resends` on the row counts them). After that, or if re-sends for the day are used up, send them the `link` from their row by hand. It's their own code, so nothing new is made.
 - **`inviting`:** an invite is in progress or was cut off. It's finished within 15 minutes, by the next "invite the next N" or by them signing up again.
+- **`failed`:** their invite failed 3 times. See "Failed sign-ups".
 - **Not found:** they didn't sign up with that address (or a typo). They can sign up again.
 
 **"My code expired."** Codes last 90 days. This service never makes a second code for the same address, so a new one has to come from lcw-back-end and be sent by hand. *Open question: James to say how support makes a replacement code.*
 
-**"Please delete my details."** See "Removing someone". Their code, if they have one, keeps working unless it's also removed in lcw-back-end.
+**"Please delete my details."** See "Removing someone".
 
 ## Removing someone
 
@@ -85,7 +91,27 @@ aws dynamodb get-item --table-name lcw-welcome-signups --key '{"email":{"S":"per
 aws dynamodb delete-item --table-name lcw-welcome-signups --key '{"email":{"S":"person@example.org"}}'
 ```
 
-If they were among the first 100, their place isn't given back. With 100 auto-invites, one place hardly matters. They can sign up again later, and would get a new code.
+If they were among the first 100, their place isn't given back (see "Before launch" to give it back by hand).
+
+If they were invited, ask James to remove their code in lcw-back-end too. Otherwise their code keeps working, and if they signed up again they'd get a second one, since this service no longer remembers the first.
+
+## Failed sign-ups
+
+An invite that fails 3 times is set aside as `failed`, so it doesn't hold up the queue. It's usually an address SES refuses, or lcw-back-end refusing that one address. To list them:
+
+```bash
+aws dynamodb query --table-name lcw-welcome-signups --index-name status-index \
+  --key-condition-expression "#s = :f" --expression-attribute-names '{"#s":"status"}' \
+  --expression-attribute-values '{":f":{"S":"failed"}}'
+```
+
+If the address looks wrong, leave it, or remove it (see "Removing someone"). If they all failed during an outage, or the person has fixed the problem, put it back in the queue in its old place; the next "invite the next N" tries it first:
+
+```bash
+aws dynamodb update-item --table-name lcw-welcome-signups --key '{"email":{"S":"person@example.org"}}' \
+  --update-expression "SET #s = :q REMOVE failures" --condition-expression "#s = :f" \
+  --expression-attribute-names '{"#s":"status"}' --expression-attribute-values '{":q":{"S":"queued"},":f":{"S":"failed"}}'
+```
 
 ## Turning sign-up off
 

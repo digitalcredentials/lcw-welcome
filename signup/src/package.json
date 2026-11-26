@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/service-test.mjs && node test/clients-test.mjs",
+    "test": "node test/service-test.mjs && node test/faults-test.mjs && node test/clients-test.mjs",
     "test:dynamodb": "node test/dynamodb-test.mjs",
     "smoke": "node test/smoke.mjs"
   },

@@ -6,7 +6,7 @@
 // { error }, or 500 if something failed (nothing is lost: trying again is safe).
 import { dynamoStore } from "./store.mjs";
 import { apiKeyReader, codeMinter, sesMailer } from "./clients.mjs";
-import { configFromEnv, makeService } from "./service.mjs";
+import { configFromEnv, makeService, describeError } from "./service.mjs";
 
 const service = makeService({
     store: dynamoStore(),
@@ -33,7 +33,7 @@ export const handler = async (event) => {
         const { status, body } = await service.signUp(input, event.requestContext?.http?.sourceIp);
         return json(status, body);
     } catch (error) {
-        console.error("SIGNUP_FAILED:", error);
+        console.error("SIGNUP_FAILED:", describeError(error, { stack: true }));
         return json(500, { error: "Sign-up isn't working right now. Please try again." });
     }
 };

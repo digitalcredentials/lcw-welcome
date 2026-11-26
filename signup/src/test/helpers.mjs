@@ -12,10 +12,10 @@ export function memoryStore() {
             signups.set(email, { email, name, signedUpAt, status: "queued", ...(organization && { organization }) });
             return true;
         },
-        async markAutoInvite(email) {
+        async markAutoInvite(email, value) {
             const row = signups.get(email);
-            if (!row) throw new Error("ConditionalCheckFailed");
-            row.autoInvite = 1;
+            if (!row || row.autoInvite !== undefined) throw new Error("ConditionalCheckFailed");
+            row.autoInvite = value;
         },
         async claim(email, at, staleBefore) {
             const row = signups.get(email);
@@ -29,7 +29,12 @@ export function memoryStore() {
             if (row?.status !== "inviting" || row.claimedAt !== claimedAt) throw new Error("ConditionalCheckFailed");
             Object.assign(row, { code, link, expiresAt: expiresAt ?? "" });
         },
-        async release(email, claimedAt) { const row = signups.get(email); if (row?.status === "inviting" && row.claimedAt === claimedAt) row.status = "queued"; },
+        async release(email, claimedAt, { failed = false, giveUp = false } = {}) {
+            const row = signups.get(email);
+            if (row?.status !== "inviting" || row.claimedAt !== claimedAt) return;
+            row.status = giveUp ? "failed" : "queued";
+            if (failed) row.failures = (row.failures ?? 0) + 1;
+        },
         async markInvited(email, at, claimedAt) {
             const row = signups.get(email);
             if (row?.status !== "inviting" || row.claimedAt !== claimedAt) throw new Error("ConditionalCheckFailed");
@@ -65,11 +70,12 @@ export function memoryStore() {
 }
 
 // A code minter that answers like POST /registration-codes, or fails when told to
+// (fail = true, or a function of the email that answers true to fail for it)
 export function fakeMinter() {
     let n = 0;
     const minter = async (email) => {
         minter.calls.push(email);
-        if (minter.fail) throw new Error("POST /registration-codes answered 500");
+        if (typeof minter.fail === "function" ? minter.fail(email) : minter.fail) throw new Error("POST /registration-codes answered 500");
         n++;
         const code = `LCW-TEST${String(n).padStart(12, "0")}`;
         return { code, link: `https://wallet.example.org/#/register?code=${code}`, expiresAt: minter.expiresAt ?? "2027-03-01T00:00:00.000Z" };
@@ -78,9 +84,10 @@ export function fakeMinter() {
     return minter;
 }
 
+// A mailer that keeps what it's sent, or fails when told to (fail = true, or a function of the message)
 export function fakeMailer() {
     const mailer = async (message) => {
-        if (mailer.fail) throw new Error("SES refused");
+        if (typeof mailer.fail === "function" ? mailer.fail(message) : mailer.fail) throw new Error(`MessageRejected: Email address is not verified: ${message.to}`);
         mailer.sent.push(message);
     };
     mailer.sent = [];
