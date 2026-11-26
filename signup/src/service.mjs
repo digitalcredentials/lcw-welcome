@@ -42,15 +42,15 @@ const epoch = (date) => Math.floor(date.getTime() / 1000);
 // "Invite the next N" stops after this many failures in a row: lcw-back-end or SES is probably down
 const FAILURES_IN_A_ROW = 3;
 // A new sign-up's first-N place is decided within its request, which the
-// function's Timeout (28 seconds, template.yaml) ends. One still undecided
+// function's Timeout (22 seconds, template.yaml) ends. One still undecided
 // after this long was cut short by an error.
 const UNDECIDED_AFTER_MS = 35_000;
 // Time an invite needs, so it isn't cut off by the function's Timeout partway:
-// the API key (3 s), making the code (8 s), sending (5 s), and the three table
-// writes around them (2.2 s each at most: 2 tries of 1 s, store.mjs). If one
-// of those fails, putting it back can take a little longer; if the function is
-// cut off then, the claim goes stale and the invite is finished later.
-const NEEDS_TO_MINT_MS = 23_000, NEEDS_TO_SEND_MS = 10_000;
+// the API key (2 s), making the code (6 s), sending (4 s), and the three table
+// writes around them (1.5 s each at most, store.mjs). If one of those fails,
+// putting it back can take a little longer; if the function is cut off then,
+// the claim goes stale and the invite can be finished later.
+const NEEDS_TO_MINT_MS = 17_000, NEEDS_TO_SEND_MS = 7_000;
 
 // Whether a send's error is about the person's address, so it counts against
 // them: SES refusing the request as invalid. lcw-back-end's errors never are
@@ -336,6 +336,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
                 result = "failed";
             }
             if (result === "cap") { results.capReached = true; break; }
+            if (result === "late") { results.stoppedEarly = true; break; }   // out of time, as above
             results[result === "invited" ? "invited" : result === "skipped" ? "skipped" : "failed"].push(person.email);
             // Refused addresses count too: SES refusing everyone means it's set up wrong
             failedInARow = result === "failed" || result === "refused" ? failedInARow + 1 : 0;

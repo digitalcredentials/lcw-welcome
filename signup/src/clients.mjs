@@ -14,7 +14,7 @@ export function apiKeyReader({ name = process.env.API_KEY_PARAMETER, ssm = new S
     let cached, cachedAt = 0;
     return async () => {
         if (!cached || Date.now() - cachedAt > KEY_CACHE_MS) {
-            const { Parameter } = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }), { abortSignal: AbortSignal.timeout(3000) });
+            const { Parameter } = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }), { abortSignal: AbortSignal.timeout(2000) });
             if (!Parameter?.Value) throw new Error("The API key parameter is empty");
             cached = Parameter.Value;
             cachedAt = Date.now();
@@ -24,7 +24,7 @@ export function apiKeyReader({ name = process.env.API_KEY_PARAMETER, ssm = new S
 }
 
 // Makes one person's code. Answers { code, link, expiresAt }; throws if lcw-back-end didn't make one.
-export function codeMinter({ url = process.env.REGISTRATION_CODES_URL, apiKey, fetchImpl = fetch, timeoutMs = 8000 } = {}) {
+export function codeMinter({ url = process.env.REGISTRATION_CODES_URL, apiKey, fetchImpl = fetch, timeoutMs = 6000 } = {}) {
     return async (email) => {
         const response = await fetchImpl(url, {
             method: "POST",
@@ -41,7 +41,7 @@ export function codeMinter({ url = process.env.REGISTRATION_CODES_URL, apiKey, f
 
 // Sends one email. Gives up after timeoutMs, so a stalled send fails while
 // there's still time to put the sign-up back, well inside the function's timeout.
-export function sesMailer({ from = process.env.FROM_EMAIL, ses = new SESv2Client(), timeoutMs = 5000 } = {}) {
+export function sesMailer({ from = process.env.FROM_EMAIL, ses = new SESv2Client(), timeoutMs = 4000 } = {}) {
     return async ({ to, subject, text, html }) => {
         await ses.send(new SendEmailCommand({
             FromEmailAddress: from,

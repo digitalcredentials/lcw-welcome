@@ -485,12 +485,12 @@ for (const what of ["mintCode", "sendEmail"]) {
 }
 {
     const t = setup({ autoInviteLimit: 2 });
-    let left = 22_000;
+    let left = 16_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
-    check("with under 23 seconds left, no code is made: back in the queue, no email counted, not counted against them, and the team is alerted to invite them",
+    check("with under 17 seconds left, no code is made: back in the queue, no email counted, not counted against them, and the team is alerted to invite them",
         t.mintCode.calls.length === 0 && t.store.signups.get("p1@example.org").status === "queued" && t.store.signups.get("p1@example.org").failures === undefined && (t.store.counters.get("emails#2026-12-15") ?? 0) === 0 &&
         t.log.lines.some((l) => l.startsWith("error INVITE_FAILED") && l.includes("enough time left")));
-    left = 24_000;
+    left = 18_000;
     await t.service.signUp(person(1), "10.0.0.1", () => left);
     check("...with enough, the first-N person signing up again is invited", t.store.signups.get("p1@example.org").status === "invited");
 }

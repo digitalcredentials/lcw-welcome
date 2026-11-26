@@ -56,13 +56,15 @@ async function conditional(client, command) {
     }
 }
 
-// The table client: each try gives up after 1 second (DynamoDB usually answers
-// in a few milliseconds), with 2 tries at most, so a stalled call fails within
-// the sign-up function's time (service.mjs) and the invite can be put back,
-// instead of the function timing out partway
-export function tableClient({ endpoint = process.env.DYNAMODB_ENDPOINT, requestTimeout = 1000, ...rest } = {}) {
+// The table client: each call gives up after 1.5 seconds (DynamoDB usually
+// answers in a few milliseconds), so a stalled call fails within the sign-up
+// function's time (service.mjs) and the invite can be put back, instead of
+// the function timing out partway. One try only: a retry of a write that
+// landed but answered slowly would trip over its own write (or count twice).
+// The service already copes with a call whose answer is lost (faults-test.mjs).
+export function tableClient({ endpoint = process.env.DYNAMODB_ENDPOINT, requestTimeout = 1500, ...rest } = {}) {
     // throwOnRequestTimeout: newer SDKs only log a warning at requestTimeout without it
-    return new DynamoDBClient({ ...(endpoint && { endpoint }), requestHandler: { requestTimeout, connectionTimeout: 1000, throwOnRequestTimeout: true }, maxAttempts: 2, ...rest });
+    return new DynamoDBClient({ ...(endpoint && { endpoint }), requestHandler: { requestTimeout, connectionTimeout: 1000, throwOnRequestTimeout: true }, maxAttempts: 1, ...rest });
 }
 
 export function dynamoStore({

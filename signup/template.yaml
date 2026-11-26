@@ -94,8 +94,9 @@ Resources:
       Description: The welcome page's sign-up form (POST /signup)
       Handler: signup.handler
       # Long enough to make a code and send an email for one sign-up (service.mjs
-      # checks for 23 seconds left first), and under the page's 30-second wait
-      Timeout: 28
+      # checks for 17 seconds left first), and well under API Gateway's and the
+      # page's 30 seconds, leaving room for a cold start
+      Timeout: 22
       LoggingConfig:
         LogGroup: !Ref SignupFunctionLogGroup
       Policies:
