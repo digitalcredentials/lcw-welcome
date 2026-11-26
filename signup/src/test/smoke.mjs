@@ -104,7 +104,7 @@ const readBody = (req) => new Promise((resolve, reject) => {
     req.on("data", (c) => chunks.push(c)).on("end", () => resolve(Buffer.concat(chunks).toString("utf8"))).on("error", reject);
 });
 const send = (res, status, body, type = "application/json") =>
-    res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" }).end(typeof body === "string" ? body : JSON.stringify(body));
+    res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" }).end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 
 // --- Stand-ins for Parameter Store, POST /registration-codes and SES
 createServer(async (req, res) => {
