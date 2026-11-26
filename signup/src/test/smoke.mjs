@@ -123,13 +123,15 @@ createServer(async (req, res) => {
         if (state.mintFails) return send(res, 500, { message: "Internal server error" });
         const { issuedTo } = JSON.parse(body);
         if (typeof issuedTo !== "string" || !issuedTo) return send(res, 400, { message: "issuedTo is required" });
-        // An address starting "refused" is refused, to show what happens to one lcw-back-end won't take
-        if (issuedTo.startsWith("refused")) return send(res, 400, { message: "issuedTo was refused" });
         const code = `LCW-SMOKE-${String(++state.codesMade).padStart(4, "0")}`;
         return send(res, 201, { code, link: `${PAGE}/_wallet/#/register?code=${code}`, expiresAt: new Date(Date.now() + 90 * 86_400_000).toISOString() });
     }
     if (req.method === "POST" && req.url === "/v2/email/outbound-emails") {
         const message = JSON.parse(body);
+        // An address starting "refused" is refused, as SES refuses an address it won't take
+        if (message.Destination?.ToAddresses?.[0]?.startsWith("refused")) {
+            return res.writeHead(400, { "Content-Type": "application/json", "x-amzn-ErrorType": "BadRequestException" }).end(JSON.stringify({ message: "Illegal address" }));
+        }
         const simple = message.Content?.Simple;
         state.outbox.push({
             at: new Date().toISOString(), from: message.FromEmailAddress, to: message.Destination?.ToAddresses?.join(", "),
@@ -241,7 +243,7 @@ createServer(async (req, res) => {
         `  Settings: first ${settings.AUTO_INVITE_LIMIT} invited straight away, ${settings.DAILY_EMAIL_CAP} emails a day, ` +
         `${settings.IP_HOURLY_LIMIT} sign-ups an hour from one network, re-send after ${settings.RESEND_GAP_MINUTES} minute(s), ` +
         `${settings.RESEND_DAILY_CAP} re-sends a day, ${settings.MAX_RESENDS} per address\n` +
-        `  An address starting "refused" (refused1@example.org, say) is refused by the stand-in lcw-back-end.\n  Ctrl+C stops it.\n`);
+        `  An address starting "refused" (refused1@example.org, say) is refused by the stand-in SES.\n  Ctrl+C stops it.\n`);
     state.log.length = 0;   // the log panel shows the service's lines, not this one
 });
 

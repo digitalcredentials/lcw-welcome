@@ -96,7 +96,21 @@ const person = (i, extra = {}) => ({ name: `Person ${i}`, email: `p${i}@example.
     await t.signUp(person(1));
     t.clock.set("2026-12-21T00:00:00.000Z");
     await t.signUp(person(1));
-    check("after the code expires, signing up again re-sends the same code, and makes no new one", t.mintCode.calls.length === 1 && t.sendEmail.sent.length === 2 && t.sendEmail.sent[1].text.includes("LCW-TEST000000000001"));
+    check("after the code expires, signing up again sends nothing (the expired code is no use) and makes no new code",
+        t.mintCode.calls.length === 1 && t.sendEmail.sent.length === 1 && t.log.lines.some((l) => l.startsWith("warn") && l.includes("has expired")) && t.store.signups.get("p1@example.org").resends === undefined);
+}
+{
+    // A code made on a try that never finished, which expired before the invite went
+    const t = setup({ autoInviteLimit: 1 });
+    t.mintCode.expiresAt = "2026-12-20T00:00:00.000Z";
+    t.sendEmail.fail = true;
+    await t.signUp(person(1));
+    t.sendEmail.fail = false;
+    t.mintCode.expiresAt = "2027-04-01T00:00:00.000Z";
+    t.clock.set("2026-12-21T00:00:00.000Z");
+    await t.service.inviteNext({ count: 1 });
+    const row = t.store.signups.get("p1@example.org");
+    check("an invite whose saved code expired before it went makes a new code and sends that", t.mintCode.calls.length === 2 && row.status === "invited" && row.code === "LCW-TEST000000000002" && t.sendEmail.sent[0].text.includes(row.code));
 }
 
 // --- The limit per IP address per hour
@@ -448,24 +462,16 @@ for (const what of ["mintCode", "sendEmail"]) {
 }
 
 {
-    const t = setup({ autoInviteLimit: 0 });
-    await t.signUp(person(1));
-    t.mintCode.status = 400;   // lcw-back-end refusing the address
-    t.mintCode.fail = true;
-    for (let i = 0; i < 3; i++) await t.service.inviteNext({ count: 1 });
-    check("lcw-back-end refusing the address (a 400) counts too", t.store.signups.get("p1@example.org").status === "failed");
-}
-{
     // An outage: none of these are the person's doing, so nobody is set aside
     const t = setup({ autoInviteLimit: 0 });
     await t.signUp(person(1));
     t.mintCode.fail = true;
-    for (const status of [500, 503, 401, 403, 404, 409, 429, 408]) { t.mintCode.status = status; await t.service.inviteNext({ count: 1 }); }
+    for (const status of [500, 503, 400, 422, 401, 403, 404, 409, 429, 408]) { t.mintCode.status = status; await t.service.inviteNext({ count: 1 }); }
     t.mintCode.fail = false;
     t.sendEmail.fail = true;
     for (const name of ["MessageRejected", "SendingPausedException", "TooManyRequestsException", "TimeoutError"]) { t.sendEmail.errorName = name; await t.service.inviteNext({ count: 1 }); }
     const row = t.store.signups.get("p1@example.org");
-    check("an outage, a bad key, a wrong URL, a duplicate, throttling or a timeout never sets anyone aside", row.status === "queued" && row.failures === undefined, row);
+    check("no error from lcw-back-end (it answers 400 only to a broken request), and no outage, throttling or timeout, sets anyone aside", row.status === "queued" && row.failures === undefined, row);
 }
 {
     const t = setup({ autoInviteLimit: 1 });
@@ -495,7 +501,10 @@ for (const what of ["mintCode", "sendEmail"]) {
     t.sendEmail.fail = (m) => ["p1@example.org", "p2@example.org", "p3@example.org"].includes(m.to);
     t.sendEmail.errorName = "BadRequestException";
     const answer = await t.service.inviteNext({ count: 5 });
-    check("3 refused addresses in a row don't stop the run (SES is working; it's the addresses)", answer.stoppedOnFailures === false && answer.invited.join() === "p4@example.org,p5@example.org" && answer.failed.length === 3);
+    check("3 refused addresses in a row stop the run too (SES refusing everyone means it's set up wrong)", answer.stoppedOnFailures === true && answer.failed.length === 3 && answer.invited.length === 0 && t.log.lines.some((l) => l.includes("set up wrong")));
+    for (let i = 0; i < 2; i++) await t.service.inviteNext({ count: 5 });
+    const after = await t.service.inviteNext({ count: 5 });
+    check("...and once those are set aside, the run goes on to the others", after.invited.join() === "p4@example.org,p5@example.org");
 }
 {
     const t = setup({ autoInviteLimit: 1 });

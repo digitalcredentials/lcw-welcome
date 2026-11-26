@@ -14,9 +14,9 @@
 //   POST /registration-codes. Signing up again with the same email re-sends
 //   the same code (at most once per RESEND_GAP_MINUTES, MAX_RESENDS times in
 //   all), never a new one.
-// - An invite refused MAX_FAILURES times because of the address (by SES or
-//   lcw-back-end) is set aside as "failed", out of the queue, so one bad
-//   address can't sit at the front of it for ever. Outages don't count.
+// - An invite SES refuses MAX_FAILURES times because of the address is set
+//   aside as "failed", out of the queue, so one bad address can't sit at the
+//   front of it for ever. Outages don't count.
 //   RUNBOOK.md says how to put it back.
 // - Misuse protection: a honeypot field, a limit per network per hour, one
 //   code per email, a daily cap on invite emails that alerts the team (the
@@ -48,13 +48,12 @@ const UNDECIDED_AFTER_MS = 30_000;
 // the API key (3 s), making the code (8 s), sending (5 s), and a margin
 const NEEDS_TO_MINT_MS = 18_000, NEEDS_TO_SEND_MS = 7_000;
 
-// Whether an invite's error is about the person's address, so it counts
-// against them: SES refusing the request as invalid, or lcw-back-end refusing
-// what was sent (400 or 422). Anything else, such as an outage, throttling, a
-// timeout, a wrong URL (404) or a bad key (401, 403), isn't the person's doing.
-function aboutTheAddress(error) {
-    return error?.name === "BadRequestException" || error?.status === 400 || error?.status === 422;
-}
+// Whether a send's error is about the person's address, so it counts against
+// them: SES refusing the request as invalid. lcw-back-end's errors never are
+// (it answers 400 only to a broken request), nor are outages, throttling or timeouts.
+const aboutTheAddress = (error) => error?.name === "BadRequestException";
+// Whether a code's expiry date has passed
+const expired = (expiresAt, now) => Boolean(expiresAt) && Date.parse(expiresAt) <= now.getTime();
 // A send that gave up waiting: SES may have sent it
 const mayHaveGone = (error) => error?.name === "TimeoutError" || error?.name === "AbortError";
 
@@ -136,7 +135,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         const claimedAt = now.toISOString();
         const row = await store.claim(email, claimedAt, staleBefore(now));
         if (!row) return "skipped";
-        if (timeLeft() < (row.code ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
+        if (timeLeft() < (row.code && !expired(row.expiresAt, now) ? NEEDS_TO_SEND_MS : NEEDS_TO_MINT_MS)) {
             log.warn("An invite wasn't started: not enough time left in this request. The person keeps their place; it's tried again later");
             await putBack(email, now, claimedAt, { emailTaken: false });
             return "late";
@@ -150,7 +149,8 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
                 return "cap";
             }
             emailTaken = true;
-            let codes = row.code ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
+            // A code made on an earlier try that never finished is reused, unless it has expired since
+            let codes = row.code && !expired(row.expiresAt, now) ? { code: row.code, link: row.link, expiresAt: row.expiresAt } : null;
             if (!codes) {
                 step = "making the code";
                 const made = await mintCode(email);
@@ -163,7 +163,7 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
         } catch (error) {
             log.error(`INVITE_FAILED for a sign-up (${step}):`, describeError(error));
             // Only SES or lcw-back-end refusing this address counts against the person
-            const failed = (step === "making the code" || step === "sending the email") && aboutTheAddress(error);
+            const failed = step === "sending the email" && aboutTheAddress(error);
             const giveUp = failed && (row.failures ?? 0) + 1 >= config.maxFailures;
             if (giveUp) log.error(`INVITE_FAILED: a sign-up's address has been refused ${config.maxFailures} times, so it's set aside as "failed" and left out of the queue until it's put back (RUNBOOK.md)`);
             // If SES may have sent it, today's email stays counted, so the cap is never passed
@@ -255,6 +255,11 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             return ok;
         }
         if (row?.status !== "invited") return ok;
+        // An expired code isn't re-sent. The wallet's register page tells them to email support for a new one.
+        if (expired(row.expiresAt, now)) {
+            log.warn("A re-send wasn't sent: that sign-up's code has expired");
+            return ok;
+        }
         const at = now.toISOString();
         const before = new Date(now.getTime() - config.resendGapMinutes * 60_000).toISOString();
         // If the re-send doesn't go out, undo markEmailed, so trying again later isn't blocked for
@@ -318,10 +323,10 @@ export function makeService({ store, mintCode, sendEmail, config, log = console,
             }
             if (result === "cap") { results.capReached = true; break; }
             results[result === "invited" ? "invited" : result === "skipped" ? "skipped" : "failed"].push(person.email);
-            // An address refused is about that address, not a sign that lcw-back-end or SES is down
-            failedInARow = result === "failed" ? failedInARow + 1 : 0;
+            // Refused addresses count too: SES refusing everyone means it's set up wrong
+            failedInARow = result === "failed" || result === "refused" ? failedInARow + 1 : 0;
             if (failedInARow >= FAILURES_IN_A_ROW && i < people.length - 1) {
-                log.error(`INVITE_FAILED: ${FAILURES_IN_A_ROW} invites failed in a row, so inviting stopped; lcw-back-end or SES is probably down`);
+                log.error(`INVITE_FAILED: ${FAILURES_IN_A_ROW} invites failed in a row, so inviting stopped; lcw-back-end or SES may be down or set up wrong`);
                 results.stoppedOnFailures = true;
                 break;
             }
